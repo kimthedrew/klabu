@@ -1,0 +1,471 @@
+import express from 'express';
+import Joi from 'joi';
+import { prisma } from '../prismaClient';
+import { authenticateToken, requireRole, AuthRequest } from '../utils/auth';
+import { io } from '../index';
+import { DeliveryAssignmentService } from '../services/deliveryAssignmentService';
+
+const router = express.Router();
+
+// Validation schemas
+const createOrderSchema = Joi.object({
+  stallId: Joi.string().required(),
+  customerName: Joi.string().min(2).required(),
+  customerPhone: Joi.string().pattern(/^[0-9+\-\s()]+$/).required(),
+  deliveryLocation: Joi.string().min(3).required(),
+  roomNumber: Joi.string().optional(),
+  paymentMethod: Joi.string().valid('MANUAL', 'STK_PUSH').default('MANUAL'),
+  mpesaConfirmationCode: Joi.string()
+    .allow('')
+    .when('paymentMethod', {
+      is: 'MANUAL',
+      then: Joi.string().min(3).required(),
+      otherwise: Joi.string().allow('').optional()
+    }),
+  items: Joi.array().items(
+    Joi.object({
+      menuItemId: Joi.string().required(),
+      quantity: Joi.number().integer().min(1).required()
+    })
+  ).min(1).required()
+});
+
+const confirmPaymentSchema = Joi.object({
+  paymentCode: Joi.string().required()
+});
+
+// Create order (public - no authentication required)
+router.post('/', async (req, res) => {
+  try {
+    const { error, value } = createOrderSchema.validate(req.body);
+    if (error) {
+      return res.status(400).json({ error: error.details[0].message });
+    }
+
+    const { stallId, customerName, customerPhone, deliveryLocation, roomNumber, mpesaConfirmationCode, paymentMethod, items } = value;
+
+    // Verify stall exists and is active
+    const stall = await prisma.stall.findUnique({
+      where: { id: stallId },
+      include: {
+        menuItems: true,
+        stallOwner: true
+      }
+    });
+
+    if (!stall || !stall.isActive) {
+      return res.status(404).json({ error: 'Stall not found or inactive' });
+    }
+
+    // Validate menu items and calculate total
+    let totalAmount = 0;
+    const orderItems = [];
+
+    for (const item of items) {
+      const menuItem = stall.menuItems.find(mi => mi.id === item.menuItemId);
+      
+      if (!menuItem) {
+        return res.status(400).json({ error: `Menu item ${item.menuItemId} not found` });
+      }
+
+      if (!menuItem.isAvailable) {
+        return res.status(400).json({ error: `Menu item ${menuItem.name} is not available` });
+      }
+
+      const itemTotal = menuItem.price * item.quantity;
+      totalAmount += itemTotal;
+
+      orderItems.push({
+        menuItemId: item.menuItemId,
+        quantity: item.quantity,
+        price: menuItem.price
+      });
+    }
+
+    // Add delivery fee (you can make this configurable)
+    const deliveryFee = 50; // KES 50 delivery fee
+    const finalTotal = totalAmount + deliveryFee;
+
+    // Create order
+    const order = await prisma.order.create({
+      data: {
+        stallId,
+        customerName,
+        customerPhone,
+        deliveryLocation,
+        roomNumber,
+        totalAmount,
+        deliveryFee,
+        paymentCode: mpesaConfirmationCode,
+        paymentStatus: 'PENDING',
+        status: 'PENDING',
+        items: {
+          create: orderItems
+        }
+      },
+      include: {
+        stall: {
+          include: {
+            stallOwner: true
+          }
+        },
+        items: {
+          include: {
+            menuItem: true
+          }
+        }
+      }
+    });
+
+    // Payment will be confirmed by stall owner after verification
+
+    // Notify stall owner
+    io.to(`stall-${stallId}`).emit('new-order', {
+      orderId: order.id,
+      customerName,
+      totalAmount: finalTotal,
+      items: order.items,
+      paymentStatus: order.paymentStatus
+    });
+
+    res.status(201).json({
+      message: 'Order created successfully',
+      order: {
+        id: order.id,
+        totalAmount: finalTotal,
+        deliveryFee,
+        status: order.status,
+        paymentMethod,
+        createdAt: order.createdAt
+      }
+    });
+
+  } catch (error) {
+    console.error('Create order error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get order details (public)
+router.get('/:orderId', async (req, res) => {
+  try {
+    const { orderId } = req.params;
+
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        stall: {
+          include: {
+            stallOwner: true
+          }
+        },
+        items: {
+          include: {
+            menuItem: true
+          }
+        },
+        deliveryPerson: true
+      }
+    });
+
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    res.json({ order });
+
+  } catch (error) {
+    console.error('Get order error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Confirm payment (stall owner only)
+router.post('/:orderId/confirm-payment', authenticateToken, requireRole(['STALL_OWNER']), async (req: AuthRequest, res) => {
+  try {
+    const { orderId } = req.params;
+    const { error, value } = confirmPaymentSchema.validate(req.body);
+    if (error) {
+      return res.status(400).json({ error: error.details[0].message });
+    }
+
+    const { paymentCode } = value;
+
+    // First find the stall owner record for this user
+    const stallOwner = await prisma.stallOwner.findUnique({
+      where: { userId: req.user!.id }
+    });
+
+    if (!stallOwner) {
+      return res.status(404).json({ error: 'Stall owner profile not found' });
+    }
+
+    // Check if order belongs to the user's stall
+    const order = await prisma.order.findFirst({
+      where: {
+        id: orderId,
+        stall: {
+          stallOwnerId: stallOwner.id
+        }
+      },
+      include: {
+        stall: true
+      }
+    });
+
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found or access denied' });
+    }
+
+    if (order.paymentStatus !== 'PENDING') {
+      return res.status(400).json({ error: 'Payment already confirmed or failed' });
+    }
+
+    // Update order status and payment
+    const updatedOrder = await prisma.order.update({
+      where: { id: orderId },
+      data: {
+        paymentCode,
+        paymentStatus: 'CONFIRMED',
+        status: 'CONFIRMED'
+      },
+      include: {
+        items: {
+          include: {
+            menuItem: true
+          }
+        }
+      }
+    });
+
+    // Create payment record
+    await prisma.payment.create({
+      data: {
+        orderId,
+        amount: order.totalAmount + order.deliveryFee,
+        mpesaCode: paymentCode,
+        status: 'CONFIRMED',
+        confirmedAt: new Date()
+      }
+    });
+
+    // Create ledger entry: manual payment to stall's till => THEY_OWE delivery fee to platform
+    try {
+      await prisma.ledgerEntry.create({
+        data: {
+          entityType: 'STALL_OWNER',
+          entityId: order.stall.stallOwnerId,
+          sourceType: 'ORDER',
+          sourceId: orderId,
+          direction: 'THEY_OWE',
+          amount: order.deliveryFee,
+          notes: 'Manual payment to stall; delivery fee owed to platform'
+        }
+      });
+    } catch (e) {
+      console.error('Failed to create ledger entry for manual payment:', e);
+    }
+
+    // Notify that order is ready for delivery assignment
+    io.emit('payment-confirmed', {
+      orderId,
+      stallId: order.stallId,
+      customerName: order.customerName,
+      totalAmount: order.totalAmount + order.deliveryFee
+    });
+
+    res.json({
+      message: 'Payment confirmed successfully',
+      order: updatedOrder
+    });
+
+  } catch (error) {
+    console.error('Confirm payment error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get stall orders (stall owner only)
+router.get('/stall/my-orders', authenticateToken, requireRole(['STALL_OWNER']), async (req: AuthRequest, res) => {
+  try {
+    const { status, page = 1, limit = 10 } = req.query;
+    
+    // First find the stall owner record for this user
+    const stallOwner = await prisma.stallOwner.findUnique({
+      where: { userId: req.user!.id }
+    });
+
+    if (!stallOwner) {
+      return res.status(404).json({ error: 'Stall owner profile not found' });
+    }
+    
+    const whereClause: any = {
+      stall: {
+        stallOwnerId: stallOwner.id
+      }
+    };
+
+    if (status) {
+      whereClause.status = status;
+    }
+
+    const orders = await prisma.order.findMany({
+      where: whereClause,
+      include: {
+        items: {
+          include: {
+            menuItem: true
+          }
+        },
+        deliveryPerson: true
+      },
+      orderBy: { createdAt: 'desc' },
+      skip: (Number(page) - 1) * Number(limit),
+      take: Number(limit)
+    });
+
+    const total = await prisma.order.count({
+      where: whereClause
+    });
+
+    res.json({
+      orders,
+      pagination: {
+        page: Number(page),
+        limit: Number(limit),
+        total,
+        pages: Math.ceil(total / Number(limit))
+      }
+    });
+
+  } catch (error) {
+    console.error('Get stall orders error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Update order status (stall owner only)
+router.patch('/:orderId/status', authenticateToken, requireRole(['STALL_OWNER']), async (req: AuthRequest, res) => {
+  try {
+    const { orderId } = req.params;
+    const { status } = req.body;
+
+    if (!['CONFIRMED', 'PREPARING', 'READY_FOR_DELIVERY'].includes(status)) {
+      return res.status(400).json({ error: 'Invalid status' });
+    }
+
+    // First find the stall owner record for this user
+    const stallOwner = await prisma.stallOwner.findUnique({
+      where: { userId: req.user!.id }
+    });
+
+    if (!stallOwner) {
+      return res.status(404).json({ error: 'Stall owner profile not found' });
+    }
+
+    // Check if order belongs to the user's stall
+    const order = await prisma.order.findFirst({
+      where: {
+        id: orderId,
+        stall: {
+          stallOwnerId: stallOwner.id
+        }
+      }
+    });
+
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found or access denied' });
+    }
+
+    const updatedOrder = await prisma.order.update({
+      where: { id: orderId },
+      data: { status },
+      include: {
+        items: {
+          include: {
+            menuItem: true
+          }
+        },
+        deliveryPerson: true
+      }
+    });
+
+    // Start delivery assignment process if status is READY_FOR_DELIVERY
+    if (status === 'READY_FOR_DELIVERY') {
+      try {
+        await DeliveryAssignmentService.startAssignmentProcess(orderId);
+      } catch (error) {
+        console.error('Error starting delivery assignment:', error);
+        // Don't fail the request, just log the error
+      }
+    }
+
+    res.json({
+      message: 'Order status updated successfully',
+      order: updatedOrder
+    });
+
+  } catch (error) {
+    console.error('Update order status error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Stall owner rejects assigned delivery person
+router.post('/:orderId/reject-delivery', authenticateToken, requireRole(['STALL_OWNER']), async (req: AuthRequest, res) => {
+  try {
+    const { orderId } = req.params;
+    const { reason } = req.body;
+
+    if (!reason || !reason.trim()) {
+      return res.status(400).json({ error: 'Reason is required' });
+    }
+
+    // First find the stall owner record for this user
+    const stallOwner = await prisma.stallOwner.findUnique({
+      where: { userId: req.user!.id }
+    });
+
+    if (!stallOwner) {
+      return res.status(404).json({ error: 'Stall owner profile not found' });
+    }
+
+    await DeliveryAssignmentService.stallOwnerRejectDelivery(orderId, stallOwner.id, reason);
+
+    res.json({
+      message: 'Delivery person rejected successfully. Finding another delivery person...'
+    });
+
+  } catch (error: any) {
+    console.error('Reject delivery error:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+// Stall owner confirms delivery pickup
+router.post('/:orderId/confirm-pickup', authenticateToken, requireRole(['STALL_OWNER']), async (req: AuthRequest, res) => {
+  try {
+    const { orderId } = req.params;
+
+    // First find the stall owner record for this user
+    const stallOwner = await prisma.stallOwner.findUnique({
+      where: { userId: req.user!.id }
+    });
+
+    if (!stallOwner) {
+      return res.status(404).json({ error: 'Stall owner profile not found' });
+    }
+
+    await DeliveryAssignmentService.confirmDeliveryPickup(orderId, stallOwner.id);
+
+    res.json({
+      message: 'Delivery pickup confirmed successfully'
+    });
+
+  } catch (error: any) {
+    console.error('Confirm pickup error:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+export default router;

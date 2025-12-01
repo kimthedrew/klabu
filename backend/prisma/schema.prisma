@@ -1,0 +1,289 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  role      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  stallOwner    StallOwner?
+  deliveryPerson DeliveryPerson?
+
+  @@map("users")
+}
+
+model StallOwner {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  fullName    String
+  businessName String?
+  phoneNumber String
+  photo       String?  // URL to photo
+  stallPhoto  String?  // URL to stall photo
+  
+  // Payment details
+  paymentMode String?  // "MPESA" (online payments only)
+  mpesaNumber String?  // M-Pesa phone number
+  tillNumber  String?  // M-Pesa till number
+  
+  // Admin approval
+  isApproved  Boolean  @default(false)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  stall Stall?
+
+  @@map("stall_owners")
+}
+
+model DeliveryPerson {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  fullName    String
+  phoneNumber String
+  idNumber    String   @unique
+  photo       String?  // URL to photo
+  
+  // Admin approval
+  isApproved  Boolean  @default(false)
+  isActive    Boolean  @default(false) // Can be active/inactive
+  rating      Float    @default(5.0)
+  totalDeliveries Int  @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  deliveries Delivery[]
+  orders     Order[]    // Add this relation
+  assignments DeliveryAssignment[]
+
+  @@map("delivery_persons")
+}
+
+model Stall {
+  id          String   @id @default(cuid())
+  stallOwnerId String  @unique
+  stallOwner  StallOwner @relation(fields: [stallOwnerId], references: [id], onDelete: Cascade)
+  
+  name        String
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  menuItems MenuItem[]
+  orders    Order[]
+  reviews   Review[]
+
+  @@map("stalls")
+}
+
+model MenuItem {
+  id        String   @id @default(cuid())
+  stallId   String
+  stall     Stall    @relation(fields: [stallId], references: [id], onDelete: Cascade)
+  
+  name      String
+  description String?
+  price     Float
+  image     String?  // URL to food image
+  isAvailable Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  orderItems OrderItem[]
+
+  @@map("menu_items")
+}
+
+model Order {
+  id        String      @id @default(cuid())
+  stallId   String
+  stall     Stall       @relation(fields: [stallId], references: [id])
+  
+  // Customer details (no login required)
+  customerName    String
+  customerPhone   String
+  deliveryLocation String
+  roomNumber     String?
+  
+  // Order details
+  totalAmount    Float
+  deliveryFee    Float
+  status         String @default("PENDING")
+  paymentCode    String?     // M-Pesa confirmation code
+  paymentStatus  String @default("PENDING")
+  
+  // Delivery details
+  deliveryPersonId String?
+  deliveryPerson   DeliveryPerson? @relation(fields: [deliveryPersonId], references: [id])
+  deliveryStatus   String @default("PENDING")
+  deliveryAcceptedAt DateTime?
+  deliveryCompletedAt DateTime?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  items OrderItem[]
+  delivery Delivery?    // Add this relation
+  reviews Review?       // Add this relation (optional)
+  payment Payment?      // Add this relation
+  assignments DeliveryAssignment[]
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id        String   @id @default(cuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItemId String
+  menuItem  MenuItem @relation(fields: [menuItemId], references: [id])
+  
+  quantity  Int
+  price     Float    // Price at time of order
+  createdAt DateTime @default(now())
+
+  @@map("order_items")
+}
+
+model Delivery {
+  id        String   @id @default(cuid())
+  orderId   String   @unique
+  order     Order    @relation(fields: [orderId], references: [id])
+  deliveryPersonId String
+  deliveryPerson DeliveryPerson @relation(fields: [deliveryPersonId], references: [id])
+  
+  status    String @default("PENDING")
+  assignedAt DateTime @default(now())
+  acceptedAt DateTime?
+  completedAt DateTime?
+  
+  // Relations
+  reviews Review[]
+
+  @@map("deliveries")
+}
+
+model DeliveryAssignment {
+  id        String   @id @default(cuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id])
+  deliveryPersonId String
+  deliveryPerson DeliveryPerson @relation(fields: [deliveryPersonId], references: [id])
+  
+  status    String @default("PENDING") // PENDING, ACCEPTED, REJECTED, EXPIRED
+  assignedAt DateTime @default(now())
+  respondedAt DateTime?
+  expiresAt DateTime
+  
+  // Relations
+  rejectionReasons DeliveryRejection[]
+
+  @@map("delivery_assignments")
+}
+
+model DeliveryRejection {
+  id        String   @id @default(cuid())
+  assignmentId String
+  assignment DeliveryAssignment @relation(fields: [assignmentId], references: [id])
+  reason    String
+  rejectedBy String // STALL_OWNER or DELIVERY_PERSON
+  createdAt DateTime @default(now())
+
+  @@map("delivery_rejections")
+}
+
+model Review {
+  id        String   @id @default(cuid())
+  orderId   String?  @unique
+  order     Order?   @relation(fields: [orderId], references: [id])
+  stallId   String?
+  stall     Stall?   @relation(fields: [stallId], references: [id])
+  deliveryId String?
+  delivery  Delivery? @relation(fields: [deliveryId], references: [id])
+  
+  rating    Int      // 1-5 stars
+  comment   String
+  reviewerName String? // Optional reviewer name
+  createdAt DateTime @default(now())
+
+  // Ensure at least one of orderId, stallId, or deliveryId is provided
+  @@map("reviews")
+}
+
+model Payment {
+  id        String   @id @default(cuid())
+  orderId   String   @unique
+  order     Order    @relation(fields: [orderId], references: [id])
+  
+  amount    Float
+  mpesaCode String?
+  status    String @default("PENDING")
+  confirmedAt DateTime?
+  createdAt DateTime @default(now())
+
+  // STK Push fields
+  merchantRequestID String?
+  checkoutRequestID String?
+  resultCode        Int?
+  resultDesc        String?
+  mpesaReceiptNumber String?
+  transactionDate   String?
+  
+  // Payment method
+  paymentMethod     String @default("MANUAL") // MANUAL, STK_PUSH
+  
+  @@map("payments")
+}
+
+model LedgerEntry {
+  id            String   @id @default(cuid())
+  // Entity that this entry is about
+  entityType    String   // STALL_OWNER or DELIVERY_PERSON
+  entityId      String
+  // Source that generated the entry
+  sourceType    String   // ORDER or DELIVERY
+  sourceId      String
+  // Direction of owing relative to platform admin
+  direction     String   // YOU_OWE or THEY_OWE
+  amount        Float
+  status        String   @default("OPEN") // OPEN or CLEARED
+  notes         String?
+  createdAt     DateTime @default(now())
+  clearedAt     DateTime?
+  clearedBy     String?
+
+  @@index([entityType, entityId])
+  @@index([status])
+  @@map("ledger_entries")
+}
+
+// Note: Using String types instead of enums for SQLite compatibility
+// Valid values:
+// UserRole: "STALL_OWNER", "DELIVERY_PERSON", "ADMIN"
+// OrderStatus: "PENDING", "CONFIRMED", "PREPARING", "READY_FOR_DELIVERY", "OUT_FOR_DELIVERY", "DELIVERED", "CANCELLED"
+// PaymentStatus: "PENDING", "CONFIRMED", "FAILED"
+// DeliveryStatus: "PENDING", "ASSIGNED", "ACCEPTED", "PICKED_UP", "DELIVERED", "CANCELLED"
