@@ -1,0 +1,79 @@
+# Koyeb deployment configuration
+# This file defines how to deploy your application to Koyeb
+
+services:
+  # Backend API service
+  - name: klabu-backend
+    type: web
+    dockerfile: backend/Dockerfile
+    dockerfile_context: .
+    ports:
+      - port: 5000
+        protocol: http
+    env:
+      - name: NODE_ENV
+        value: production
+      - name: PORT
+        value: "5000"
+      # Database - Set these in Koyeb dashboard or via CLI
+      - name: DATABASE_URL
+        secret: true
+      # JWT Secret - Set in Koyeb dashboard
+      - name: JWT_SECRET
+        secret: true
+      # Frontend URL - Update with your frontend domain
+      - name: FRONTEND_URL
+        value: "https://your-frontend-domain.koyeb.app"
+      # M-Pesa Configuration - Set these in Koyeb dashboard
+      - name: MPESA_SHORTCODE
+        secret: true
+      - name: MPESA_CONSUMER_KEY
+        secret: true
+      - name: MPESA_CONSUMER_SECRET
+        secret: true
+      - name: MPESA_PASSKEY
+        secret: true
+      - name: MPESA_BASE_URL
+        value: "https://api.safaricom.co.ke"  # Use sandbox URL for testing
+      - name: MPESA_CALLBACK_URL
+        value: "https://your-backend-domain.koyeb.app/api/payments/stk-callback"
+      - name: BACKEND_URL
+        value: "https://your-backend-domain.koyeb.app"
+      # Cloudinary Configuration - Set in Koyeb dashboard
+      - name: CLOUDINARY_CLOUD_NAME
+        secret: true
+      - name: CLOUDINARY_API_KEY
+        secret: true
+      - name: CLOUDINARY_API_SECRET
+        secret: true
+    regions:
+      - fra  # Frankfurt - change to your preferred region
+    healthcheck:
+      path: /api/health
+      interval: 30
+      timeout: 10
+      initial_delay: 10
+
+  # Frontend Next.js service
+  - name: klabu-frontend
+    type: web
+    dockerfile: web/Dockerfile
+    dockerfile_context: .
+    ports:
+      - port: 3000
+        protocol: http
+    env:
+      - name: NODE_ENV
+        value: production
+      - name: PORT
+        value: "3000"
+      # Backend API URL - Update with your backend domain
+      - name: NEXT_PUBLIC_API_URL
+        value: "https://your-backend-domain.koyeb.app"
+    regions:
+      - fra  # Frankfurt - change to your preferred region
+    healthcheck:
+      path: /
+      interval: 30
+      timeout: 10
+      initial_delay: 10
