@@ -450,6 +450,45 @@ router.patch('/delivery-persons/:id/toggle', authenticateToken, requireRole(['AD
   }
 });
 
+// Get payment config
+router.get('/payment-config', authenticateToken, requireRole(['ADMIN']), async (req: AuthRequest, res) => {
+  try {
+    const config = await prisma.paymentConfig.upsert({
+      where: { id: 'singleton' },
+      update: {},
+      create: { id: 'singleton', stkPushEnabled: false }
+    });
+    res.json({ config });
+  } catch (error) {
+    console.error('Get payment config error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Toggle STK Push on/off
+router.patch('/payment-config/stk-push', authenticateToken, requireRole(['ADMIN']), async (req: AuthRequest, res) => {
+  try {
+    const { enabled } = req.body;
+    if (typeof enabled !== 'boolean') {
+      return res.status(400).json({ error: 'enabled must be a boolean' });
+    }
+
+    const config = await prisma.paymentConfig.upsert({
+      where: { id: 'singleton' },
+      update: { stkPushEnabled: enabled },
+      create: { id: 'singleton', stkPushEnabled: enabled }
+    });
+
+    res.json({
+      message: `STK Push ${enabled ? 'enabled' : 'disabled'} successfully`,
+      config
+    });
+  } catch (error) {
+    console.error('Toggle STK Push error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Settlements: Stalls balances summary
 router.get('/settlements/stalls-summary', authenticateToken, requireRole(['ADMIN']), async (req: AuthRequest, res) => {
   try {

@@ -11,6 +11,16 @@ const initiateSTKPushSchema = Joi.object({
   phoneNumber: Joi.string().pattern(/^[0-9+\-\s()]+$/).required()
 });
 
+// Public: check if STK Push is enabled (used by checkout UI)
+router.get('/config', async (_req, res) => {
+  try {
+    const config = await prisma.paymentConfig.findUnique({ where: { id: 'singleton' } });
+    res.json({ stkPushEnabled: config?.stkPushEnabled ?? false });
+  } catch (error) {
+    res.json({ stkPushEnabled: false });
+  }
+});
+
 // Initiate STK Push payment
 router.post('/stk-push', async (req, res) => {
   try {
@@ -20,6 +30,12 @@ router.post('/stk-push', async (req, res) => {
     }
 
     const { orderId, phoneNumber } = value;
+
+    // Check STK Push is enabled by admin
+    const config = await prisma.paymentConfig.findUnique({ where: { id: 'singleton' } });
+    if (!config?.stkPushEnabled) {
+      return res.status(400).json({ error: 'STK Push payments are currently unavailable.' });
+    }
 
     // Get order details
     const order = await prisma.order.findUnique({
@@ -145,8 +161,7 @@ router.post('/stk-callback', async (req, res) => {
         where: { id: payment.orderId },
         data: {
           paymentStatus: 'CONFIRMED',
-          status: 'CONFIRMED',
-          paymentCode: result.mpesaReceiptNumber
+          status: 'CONFIRMED'
         }
       });
 

@@ -15,11 +15,11 @@ const createOrderSchema = Joi.object({
   deliveryLocation: Joi.string().min(3).required(),
   roomNumber: Joi.string().optional(),
   paymentMethod: Joi.string().valid('MANUAL', 'STK_PUSH').default('MANUAL'),
-  mpesaConfirmationCode: Joi.string()
+  mpesaPayerName: Joi.string()
     .allow('')
     .when('paymentMethod', {
       is: 'MANUAL',
-      then: Joi.string().min(3).required(),
+      then: Joi.string().min(2).required(),
       otherwise: Joi.string().allow('').optional()
     }),
   items: Joi.array().items(
@@ -31,7 +31,7 @@ const createOrderSchema = Joi.object({
 });
 
 const confirmPaymentSchema = Joi.object({
-  paymentCode: Joi.string().required()
+  mpesaPayerName: Joi.string().min(2).required()
 });
 
 // Create order (public - no authentication required)
@@ -42,7 +42,15 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: error.details[0].message });
     }
 
-    const { stallId, customerName, customerPhone, deliveryLocation, roomNumber, mpesaConfirmationCode, paymentMethod, items } = value;
+    const { stallId, customerName, customerPhone, deliveryLocation, roomNumber, mpesaPayerName, paymentMethod, items } = value;
+
+    // If STK Push was requested, check that admin has enabled it
+    if (paymentMethod === 'STK_PUSH') {
+      const config = await prisma.paymentConfig.findUnique({ where: { id: 'singleton' } });
+      if (!config?.stkPushEnabled) {
+        return res.status(400).json({ error: 'STK Push payments are currently unavailable. Please pay manually.' });
+      }
+    }
 
     // Verify stall exists and is active
     const stall = await prisma.stall.findUnique({
@@ -96,7 +104,7 @@ router.post('/', async (req, res) => {
         roomNumber,
         totalAmount,
         deliveryFee,
-        paymentCode: mpesaConfirmationCode,
+        mpesaPayerName,
         paymentStatus: 'PENDING',
         status: 'PENDING',
         items: {
@@ -189,7 +197,7 @@ router.post('/:orderId/confirm-payment', authenticateToken, requireRole(['STALL_
       return res.status(400).json({ error: error.details[0].message });
     }
 
-    const { paymentCode } = value;
+    const { mpesaPayerName } = value;
 
     // First find the stall owner record for this user
     const stallOwner = await prisma.stallOwner.findUnique({
@@ -225,7 +233,7 @@ router.post('/:orderId/confirm-payment', authenticateToken, requireRole(['STALL_
     const updatedOrder = await prisma.order.update({
       where: { id: orderId },
       data: {
-        paymentCode,
+        mpesaPayerName,
         paymentStatus: 'CONFIRMED',
         status: 'CONFIRMED'
       },
@@ -243,7 +251,7 @@ router.post('/:orderId/confirm-payment', authenticateToken, requireRole(['STALL_
       data: {
         orderId,
         amount: order.totalAmount + order.deliveryFee,
-        mpesaCode: paymentCode,
+        mpesaCode: mpesaPayerName,
         status: 'CONFIRMED',
         confirmedAt: new Date()
       }

@@ -45,7 +45,7 @@ interface RecentOrder {
   status: string;
   paymentStatus: string;
   deliveryStatus: string;
-  paymentCode?: string;
+  mpesaPayerName?: string;
   createdAt: string;
   deliveryAcceptedAt?: string;
   deliveryCompletedAt?: string;
@@ -92,6 +92,8 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [selectedOrder, setSelectedOrder] = useState<RecentOrder | null>(null);
   const [showOrderModal, setShowOrderModal] = useState(false);
+  const [stkPushEnabled, setStkPushEnabled] = useState(false);
+  const [togglingStk, setTogglingStk] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -112,7 +114,38 @@ export default function AdminDashboard() {
     }
 
     fetchDashboardData();
+    fetchPaymentConfig();
   }, []);
+
+  const fetchPaymentConfig = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.get(`${API_BASE_URL}/admin/payment-config`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setStkPushEnabled(response.data.config.stkPushEnabled);
+    } catch (error) {
+      console.error('Error fetching payment config:', error);
+    }
+  };
+
+  const handleToggleStkPush = async () => {
+    setTogglingStk(true);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.patch(
+        `${API_BASE_URL}/admin/payment-config/stk-push`,
+        { enabled: !stkPushEnabled },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setStkPushEnabled(response.data.config.stkPushEnabled);
+      toast.success(response.data.message);
+    } catch (error) {
+      toast.error('Failed to update STK Push setting');
+    } finally {
+      setTogglingStk(false);
+    }
+  };
 
   const fetchDashboardData = async () => {
     try {
@@ -403,6 +436,35 @@ export default function AdminDashboard() {
               </Link>
             </div>
           </div>
+
+          {/* Payment Settings */}
+          <div className="mt-8 card">
+            <h2 className="text-xl font-semibold text-gray-900 mb-6">Payment Settings</h2>
+            <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
+              <div>
+                <h3 className="font-medium text-gray-900">STK Push Payments</h3>
+                <p className="text-sm text-gray-500 mt-1">
+                  {stkPushEnabled
+                    ? 'Customers can pay via M-Pesa STK Push prompt on their phone.'
+                    : 'STK Push is disabled. Customers pay manually and enter their M-Pesa name.'}
+                </p>
+              </div>
+              <button
+                onClick={handleToggleStkPush}
+                disabled={togglingStk}
+                className={`flex items-center space-x-2 px-4 py-2 rounded-lg font-medium transition-colors ${
+                  stkPushEnabled
+                    ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                {stkPushEnabled
+                  ? <ToggleRight size={24} className="text-green-600" />
+                  : <ToggleLeft size={24} className="text-gray-400" />}
+                <span>{togglingStk ? 'Updating...' : stkPushEnabled ? 'Enabled' : 'Disabled'}</span>
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Order Details Modal */}
@@ -549,10 +611,10 @@ export default function AdminDashboard() {
                         <span>Total Amount:</span>
                         <span className="text-green-600">KES {selectedOrder.totalAmount + selectedOrder.deliveryFee}</span>
                       </div>
-                      {selectedOrder.paymentCode && (
+                      {selectedOrder.mpesaPayerName && (
                         <div className="border-t pt-2">
                           <p className="text-sm text-gray-600">
-                            <strong>M-Pesa Code:</strong> {selectedOrder.paymentCode}
+                            <strong>M-Pesa Payer Name:</strong> {selectedOrder.mpesaPayerName}
                           </p>
                         </div>
                       )}

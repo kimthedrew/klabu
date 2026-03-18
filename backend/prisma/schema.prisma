@@ -132,7 +132,7 @@ model Order {
   totalAmount    Float
   deliveryFee    Float
   status         String @default("PENDING")
-  paymentCode    String?     // M-Pesa confirmation code
+  mpesaPayerName String?     // M-Pesa paying name entered by customer
   paymentStatus  String @default("PENDING")
   
   // Delivery details
@@ -279,6 +279,13 @@ model LedgerEntry {
   @@index([entityType, entityId])
   @@index([status])
   @@map("ledger_entries")
+}
+
+model PaymentConfig {
+  id             String  @id @default("singleton")
+  stkPushEnabled Boolean @default(false)
+
+  @@map("payment_config")
 }
 
 // Note: Using String types instead of enums for SQLite compatibility

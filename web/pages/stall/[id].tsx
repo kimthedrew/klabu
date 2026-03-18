@@ -2,15 +2,17 @@ import { useState, useEffect } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { 
-  ArrowLeft, 
-  Star, 
-  Phone, 
-  MapPin, 
-  Clock, 
+import {
+  ArrowLeft,
+  Star,
+  Phone,
+  MapPin,
+  Clock,
   ShoppingCart,
   Plus,
-  Minus
+  Minus,
+  Copy,
+  Check
 } from 'lucide-react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
@@ -55,13 +57,15 @@ export default function StallPage() {
   const [loading, setLoading] = useState(true);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [showOrderModal, setShowOrderModal] = useState(false);
+  const [stkPushEnabled, setStkPushEnabled] = useState(false);
+  const [copiedTill, setCopiedTill] = useState(false);
   const [orderForm, setOrderForm] = useState({
     customerName: '',
     customerPhone: '',
     deliveryLocation: '',
     roomNumber: '',
-    mpesaConfirmationCode: '',
-    paymentMethod: 'STK_PUSH' // Default to STK Push
+    mpesaPayerName: '',
+    paymentMethod: 'MANUAL'
   });
   const router = useRouter();
   const { id } = router.query;
@@ -69,8 +73,18 @@ export default function StallPage() {
   useEffect(() => {
     if (id) {
       fetchStall();
+      fetchPaymentConfig();
     }
   }, [id]);
+
+  const fetchPaymentConfig = async () => {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/payments/config`);
+      setStkPushEnabled(response.data.stkPushEnabled);
+    } catch (error) {
+      setStkPushEnabled(false);
+    }
+  };
 
   const fetchStall = async () => {
     try {
@@ -138,7 +152,7 @@ export default function StallPage() {
         customerPhone: orderForm.customerPhone,
         deliveryLocation: orderForm.deliveryLocation,
         roomNumber: orderForm.roomNumber,
-        mpesaConfirmationCode: orderForm.mpesaConfirmationCode,
+        mpesaPayerName: orderForm.mpesaPayerName,
         paymentMethod: orderForm.paymentMethod,
         items: cart.map(item => ({
           menuItemId: item.menuItem.id,
@@ -172,11 +186,17 @@ export default function StallPage() {
 
       setCart([]);
       setShowOrderModal(false);
-      setOrderForm({ customerName: '', customerPhone: '', deliveryLocation: '', roomNumber: '', mpesaConfirmationCode: '', paymentMethod: 'STK_PUSH' });
+      setOrderForm({ customerName: '', customerPhone: '', deliveryLocation: '', roomNumber: '', mpesaPayerName: '', paymentMethod: 'MANUAL' });
       
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Failed to place order');
     }
+  };
+
+  const copyTill = (value: string) => {
+    navigator.clipboard.writeText(value);
+    setCopiedTill(true);
+    setTimeout(() => setCopiedTill(false), 2000);
   };
 
   if (loading) {
@@ -278,12 +298,30 @@ export default function StallPage() {
                   <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
                     <h4 className="font-medium text-green-800 mb-2">Payment Information</h4>
                     <div className="text-sm text-green-700">
-                      <p><strong>Payment Mode:</strong> M-Pesa</p>
+                      <p className="mb-1"><strong>Payment Mode:</strong> M-Pesa</p>
                       {stall.stallOwner.tillNumber ? (
-                        <p><strong>M-Pesa Till:</strong> {stall.stallOwner.tillNumber}</p>
-                      ) : (
-                        <p><strong>M-Pesa Number:</strong> {stall.stallOwner.mpesaNumber}</p>
-                      )}
+                        <div className="flex items-center space-x-2">
+                          <span><strong>M-Pesa Till:</strong> {stall.stallOwner.tillNumber}</span>
+                          <button
+                            onClick={() => copyTill(stall.stallOwner.tillNumber!)}
+                            className="flex items-center text-green-600 hover:text-green-800 transition-colors"
+                            title="Copy till number"
+                          >
+                            {copiedTill ? <Check size={16} /> : <Copy size={16} />}
+                          </button>
+                        </div>
+                      ) : stall.stallOwner.mpesaNumber ? (
+                        <div className="flex items-center space-x-2">
+                          <span><strong>M-Pesa Number:</strong> {stall.stallOwner.mpesaNumber}</span>
+                          <button
+                            onClick={() => copyTill(stall.stallOwner.mpesaNumber!)}
+                            className="flex items-center text-green-600 hover:text-green-800 transition-colors"
+                            title="Copy number"
+                          >
+                            {copiedTill ? <Check size={16} /> : <Copy size={16} />}
+                          </button>
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 )}
@@ -384,19 +422,21 @@ export default function StallPage() {
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
                   <h4 className="font-medium text-blue-800 mb-3">Payment Method</h4>
                   <div className="space-y-3">
-                    <label className="flex items-center">
-                      <input
-                        type="radio"
-                        name="paymentMethod"
-                        value="STK_PUSH"
-                        checked={orderForm.paymentMethod === 'STK_PUSH'}
-                        onChange={(e) => setOrderForm({...orderForm, paymentMethod: e.target.value})}
-                        className="mr-2"
-                      />
-                      <span className="text-sm text-blue-700">
-                        <strong>STK Push (Recommended)</strong> - We'll send a payment request to your phone
-                      </span>
-                    </label>
+                    {stkPushEnabled && (
+                      <label className="flex items-center">
+                        <input
+                          type="radio"
+                          name="paymentMethod"
+                          value="STK_PUSH"
+                          checked={orderForm.paymentMethod === 'STK_PUSH'}
+                          onChange={(e) => setOrderForm({...orderForm, paymentMethod: e.target.value})}
+                          className="mr-2"
+                        />
+                        <span className="text-sm text-blue-700">
+                          <strong>STK Push</strong> - We'll send a payment request to your phone
+                        </span>
+                      </label>
+                    )}
                     <label className="flex items-center">
                       <input
                         type="radio"
@@ -407,20 +447,42 @@ export default function StallPage() {
                         className="mr-2"
                       />
                       <span className="text-sm text-blue-700">
-                        <strong>Manual Payment</strong> - Pay manually and enter confirmation code
+                        <strong>Manual Payment</strong> - Pay via M-Pesa and enter your name below
                       </span>
                     </label>
                   </div>
-                  
+
                   {orderForm.paymentMethod === 'MANUAL' && (
                     <div className="mt-3 text-sm text-blue-700">
-                      <p className="font-medium">Pay KES {getTotalAmount() + 50} to:</p>
+                      <p className="font-medium mb-1">Pay KES {getTotalAmount() + 50} to:</p>
                       {stall.stallOwner.tillNumber ? (
-                        <p><strong>M-Pesa Till:</strong> {stall.stallOwner.tillNumber}</p>
-                      ) : (
-                        <p><strong>M-Pesa Number:</strong> {stall.stallOwner.mpesaNumber}</p>
-                      )}
-                      <p className="mt-2 text-xs">After payment, you'll receive a confirmation code. Enter it below to complete your order.</p>
+                        <div className="flex items-center space-x-2">
+                          <span><strong>M-Pesa Till:</strong> {stall.stallOwner.tillNumber}</span>
+                          <button
+                            type="button"
+                            onClick={() => copyTill(stall.stallOwner.tillNumber!)}
+                            className="flex items-center text-blue-600 hover:text-blue-800 transition-colors"
+                            title="Copy till number"
+                          >
+                            {copiedTill ? <Check size={16} /> : <Copy size={16} />}
+                          </button>
+                          {copiedTill && <span className="text-xs text-green-600">Copied!</span>}
+                        </div>
+                      ) : stall.stallOwner.mpesaNumber ? (
+                        <div className="flex items-center space-x-2">
+                          <span><strong>M-Pesa Number:</strong> {stall.stallOwner.mpesaNumber}</span>
+                          <button
+                            type="button"
+                            onClick={() => copyTill(stall.stallOwner.mpesaNumber!)}
+                            className="flex items-center text-blue-600 hover:text-blue-800 transition-colors"
+                            title="Copy number"
+                          >
+                            {copiedTill ? <Check size={16} /> : <Copy size={16} />}
+                          </button>
+                          {copiedTill && <span className="text-xs text-green-600">Copied!</span>}
+                        </div>
+                      ) : null}
+                      <p className="mt-2 text-xs">Enter the name on your M-Pesa account below so the stall owner can verify your payment.</p>
                     </div>
                   )}
                 </div>
@@ -483,22 +545,22 @@ export default function StallPage() {
                   />
                 </div>
 
-                {/* M-Pesa Confirmation Code - Only for manual payments */}
+                {/* M-Pesa Payer Name - Only for manual payments */}
                 {stall && stall.stallOwner.paymentMode === 'MPESA' && orderForm.paymentMethod === 'MANUAL' && (
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      M-Pesa Confirmation Code *
+                      M-Pesa Paying Name *
                     </label>
                     <input
                       type="text"
                       required
-                      value={orderForm.mpesaConfirmationCode}
-                      onChange={(e) => setOrderForm({...orderForm, mpesaConfirmationCode: e.target.value})}
+                      value={orderForm.mpesaPayerName}
+                      onChange={(e) => setOrderForm({...orderForm, mpesaPayerName: e.target.value})}
                       className="input-field"
-                      placeholder="Enter the M-Pesa confirmation code"
+                      placeholder="e.g. JOHN DOE"
                     />
                     <p className="text-xs text-gray-500 mt-1">
-                      This is the code you received after making the M-Pesa payment
+                      Enter the name on your M-Pesa account exactly as it appears on the payment confirmation
                     </p>
                   </div>
                 )}
