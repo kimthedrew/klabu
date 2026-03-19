@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import Head from 'next/head';
 import Link from 'next/link';
+import SEO from '../components/SEO';
 import { Search, MapPin, Clock, Star, Phone, ShoppingCart } from 'lucide-react';
 import axios from 'axios';
 import { API_BASE_URL } from '../lib/config';
@@ -94,14 +94,39 @@ export default function Home() {
   console.log('Search term:', searchTerm);
   console.log('Food search:', foodSearch);
 
+  const jsonLd = [
+    {
+      '@context': 'https://schema.org',
+      '@type': 'WebSite',
+      name: 'Klabu',
+      url: 'https://klabu.site',
+      description: 'UON food delivery platform — order from campus stalls and get food delivered to your hostel.',
+      potentialAction: {
+        '@type': 'SearchAction',
+        target: 'https://klabu.site/?search={search_term_string}',
+        'query-input': 'required name=search_term_string',
+      },
+    },
+    {
+      '@context': 'https://schema.org',
+      '@type': 'Organization',
+      name: 'Klabu',
+      url: 'https://klabu.site',
+      description: 'Food delivery service for University of Nairobi students. Order from Klabu stalls and get meals delivered to your hostel.',
+      areaServed: {
+        '@type': 'Place',
+        name: 'University of Nairobi, Nairobi, Kenya',
+      },
+    },
+  ];
+
   return (
     <>
-      <Head>
-        <title>Klabu - Food Delivery at UON</title>
-        <meta name="description" content="Order food from your favorite Klabu stalls and get it delivered to your hostel" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <link rel="icon" href="/favicon.ico" />
-      </Head>
+      <SEO
+        canonical="/"
+        description="Order food from Klabu stalls at the University of Nairobi and get it delivered to your hostel. Fast, easy UON food delivery."
+        jsonLd={jsonLd}
+      />
 
       <div className="min-h-screen bg-gray-50">
         {/* Header */}

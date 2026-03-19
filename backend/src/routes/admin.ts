@@ -1,6 +1,7 @@
 import express from 'express';
 import { prisma } from '../prismaClient';
 import { authenticateToken, requireRole, AuthRequest } from '../utils/auth';
+import { getCache, setCache, invalidateCache } from '../utils/cache';
 
 const router = express.Router();
 
@@ -267,6 +268,7 @@ router.patch('/stalls/:stallId/toggle', authenticateToken, requireRole(['ADMIN']
       data: { isActive: !stall.isActive }
     });
 
+    invalidateCache('stalls:');
     res.json({
       message: `Stall ${updatedStall.isActive ? 'activated' : 'deactivated'} successfully`,
       stall: updatedStall
@@ -453,12 +455,17 @@ router.patch('/delivery-persons/:id/toggle', authenticateToken, requireRole(['AD
 // Get payment config
 router.get('/payment-config', authenticateToken, requireRole(['ADMIN']), async (req: AuthRequest, res) => {
   try {
+    const cached = getCache<any>('config:payment');
+    if (cached) return res.json(cached);
+
     const config = await prisma.paymentConfig.upsert({
       where: { id: 'singleton' },
       update: {},
       create: { id: 'singleton', stkPushEnabled: false }
     });
-    res.json({ config });
+    const response = { config };
+    setCache('config:payment', response, 300);
+    res.json(response);
   } catch (error) {
     console.error('Get payment config error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -479,6 +486,7 @@ router.patch('/payment-config/stk-push', authenticateToken, requireRole(['ADMIN'
       create: { id: 'singleton', stkPushEnabled: enabled }
     });
 
+    invalidateCache('config:payment');
     res.json({
       message: `STK Push ${enabled ? 'enabled' : 'disabled'} successfully`,
       config

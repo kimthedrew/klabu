@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import Head from 'next/head';
 import Link from 'next/link';
+import SEO from '../components/SEO';
 import { Store, Truck, User, LogIn, UserPlus } from 'lucide-react';
 import axios from 'axios';
 import { API_BASE_URL } from '../lib/config';
@@ -10,12 +10,11 @@ export default function App() {
 
   return (
     <>
-      <Head>
-        <title>Klabu App - For Stall Owners & Delivery</title>
-        <meta name="description" content="Manage your stall or become a delivery person on Klabu" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <link rel="icon" href="/favicon.ico" />
-      </Head>
+      <SEO
+        title="For Stall Owners & Delivery Persons"
+        description="Register your food stall at UON on Klabu, or sign up as a delivery person. Join the University of Nairobi's campus food delivery platform."
+        canonical="/app"
+      />
 
       <div className="min-h-screen bg-gray-50">
         {/* Header */}

@@ -4,6 +4,7 @@ import { prisma } from '../prismaClient';
 import { authenticateToken, requireRole, AuthRequest } from '../utils/auth';
 import { io } from '../index';
 import { DeliveryAssignmentService } from '../services/deliveryAssignmentService';
+import { getCache } from '../utils/cache';
 
 const router = express.Router();
 
@@ -46,8 +47,11 @@ router.post('/', async (req, res) => {
 
     // If STK Push was requested, check that admin has enabled it
     if (paymentMethod === 'STK_PUSH') {
-      const config = await prisma.paymentConfig.findUnique({ where: { id: 'singleton' } });
-      if (!config?.stkPushEnabled) {
+      const cached = getCache<{ config: { stkPushEnabled: boolean } }>('config:payment');
+      const stkEnabled = cached
+        ? cached.config.stkPushEnabled
+        : (await prisma.paymentConfig.findUnique({ where: { id: 'singleton' } }))?.stkPushEnabled;
+      if (!stkEnabled) {
         return res.status(400).json({ error: 'STK Push payments are currently unavailable. Please pay manually.' });
       }
     }

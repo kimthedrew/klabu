@@ -2,6 +2,7 @@ import express from 'express';
 import Joi from 'joi';
 import { prisma } from '../prismaClient';
 import { authenticateToken, requireRole, AuthRequest } from '../utils/auth';
+import { getCache, setCache, invalidateCache } from '../utils/cache';
 
 const router = express.Router();
 
@@ -29,7 +30,13 @@ const menuItemSchema = Joi.object({
 router.get('/', async (req, res) => {
   try {
     const { search, food } = req.query;
-    
+
+    // Only cache the no-filter request — searched results are too varied to cache effectively
+    if (!search && !food) {
+      const cached = getCache<any>('stalls:list');
+      if (cached) return res.json(cached);
+    }
+
     let whereClause: any = {
       isActive: true,
       isApproved: true,
@@ -107,7 +114,9 @@ router.get('/', async (req, res) => {
       };
     });
 
-    res.json({ stalls: stallsWithRatings });
+    const response = { stalls: stallsWithRatings };
+    if (!search && !food) setCache('stalls:list', response, 120);
+    res.json(response);
 
   } catch (error) {
     console.error('Get stalls error:', error);
@@ -119,6 +128,9 @@ router.get('/', async (req, res) => {
 router.get('/:stallId', async (req, res) => {
   try {
     const { stallId } = req.params;
+
+    const cached = getCache<any>(`stalls:single:${stallId}`);
+    if (cached) return res.json(cached);
 
     const stall = await prisma.stall.findUnique({
       where: { id: stallId },
@@ -147,11 +159,13 @@ router.get('/:stallId', async (req, res) => {
       ? reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length 
       : 0;
 
-    res.json({
+    const response = {
       ...stall,
       averageRating: Math.round(averageRating * 10) / 10,
       totalReviews: reviews.length
-    });
+    };
+    setCache(`stalls:single:${stallId}`, response, 120);
+    res.json(response);
 
   } catch (error) {
     console.error('Get stall error:', error);
@@ -201,6 +215,7 @@ router.post('/', authenticateToken, requireRole(['STALL_OWNER']), async (req: Au
       }
     });
 
+    invalidateCache('stalls:');
     res.status(201).json({ message: 'Stall created successfully', stall });
 
   } catch (error) {
@@ -248,6 +263,7 @@ router.put('/:stallId', authenticateToken, requireRole(['STALL_OWNER']), async (
       }
     });
 
+    invalidateCache('stalls:');
     res.json({ message: 'Stall updated successfully', stall: updatedStall });
 
   } catch (error) {
@@ -293,6 +309,7 @@ router.post('/:stallId/menu', authenticateToken, requireRole(['STALL_OWNER']), a
       }
     });
 
+    invalidateCache('stalls:');
     res.status(201).json({ message: 'Menu item added successfully', menuItem });
 
   } catch (error) {
@@ -339,6 +356,7 @@ router.put('/:stallId/menu/:itemId', authenticateToken, requireRole(['STALL_OWNE
       data: value
     });
 
+    invalidateCache('stalls:');
     res.json({ message: 'Menu item updated successfully', menuItem: updatedMenuItem });
 
   } catch (error) {
@@ -380,6 +398,7 @@ router.delete('/:stallId/menu/:itemId', authenticateToken, requireRole(['STALL_O
       where: { id: itemId }
     });
 
+    invalidateCache('stalls:');
     res.json({ message: 'Menu item deleted successfully' });
 
   } catch (error) {

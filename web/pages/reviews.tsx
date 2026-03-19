@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import Head from 'next/head';
 import Link from 'next/link';
+import SEO from '../components/SEO';
 import { 
   Star, 
   Search, 
@@ -186,12 +186,11 @@ export default function ReviewsPage() {
 
   return (
     <>
-      <Head>
-        <title>Reviews - Klabu</title>
-        <meta name="description" content="Read and write reviews for Klabu stalls and delivery persons" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <link rel="icon" href="/favicon.ico" />
-      </Head>
+      <SEO
+        title="Reviews"
+        description="Read and write reviews for Klabu food stalls and delivery persons at the University of Nairobi. See ratings from UON students."
+        canonical="/reviews"
+      />
 
       <div className="min-h-screen bg-gray-50">
         {/* Header */}

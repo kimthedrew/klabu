@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import Head from 'next/head';
 import Link from 'next/link';
+import SEO from '../../components/SEO';
 import { useRouter } from 'next/router';
 import {
   ArrowLeft,
@@ -220,12 +220,46 @@ export default function StallPage() {
 
   return (
     <>
-      <Head>
-        <title>{stall.name} - Klabu</title>
-        <meta name="description" content={`Order from ${stall.name} on Klabu`} />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <link rel="icon" href="/favicon.ico" />
-      </Head>
+      <SEO
+        title={stall.name}
+        description={`Order from ${stall.name} at the University of Nairobi on Klabu. ${stall.description || ''} Fast UON food delivery to your hostel.`.trim()}
+        canonical={`/stall/${stall.id}`}
+        ogType="restaurant"
+        ogImage={stall.stallOwner.stallPhoto}
+        jsonLd={{
+          '@context': 'https://schema.org',
+          '@type': 'FoodEstablishment',
+          name: stall.name,
+          description: stall.description,
+          url: `https://klabu.site/stall/${stall.id}`,
+          servesCuisine: 'African',
+          areaServed: 'University of Nairobi, Nairobi, Kenya',
+          aggregateRating: stall.totalReviews > 0 ? {
+            '@type': 'AggregateRating',
+            ratingValue: stall.averageRating,
+            reviewCount: stall.totalReviews,
+          } : undefined,
+          hasMenu: {
+            '@type': 'Menu',
+            hasMenuSection: {
+              '@type': 'MenuSection',
+              hasMenuItem: stall.menuItems.map((item) => ({
+                '@type': 'MenuItem',
+                name: item.name,
+                description: item.description,
+                offers: {
+                  '@type': 'Offer',
+                  price: item.price,
+                  priceCurrency: 'KES',
+                  availability: item.isAvailable
+                    ? 'https://schema.org/InStock'
+                    : 'https://schema.org/OutOfStock',
+                },
+              })),
+            },
+          },
+        }}
+      />
 
       <div className="min-h-screen bg-gray-50">
         {/* Header */}
