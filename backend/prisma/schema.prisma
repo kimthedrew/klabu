@@ -6,8 +6,8 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = "file:./dev.db"
+  provider = "cockroachdb"
+  url      = env("DATABASE_URL")
 }
 
 model User {
@@ -288,7 +288,7 @@ model PaymentConfig {
   @@map("payment_config")
 }
 
-// Note: Using String types instead of enums for SQLite compatibility
+// Note: Using String types for status/role fields (no enums) for simplicity
 // Valid values:
 // UserRole: "STALL_OWNER", "DELIVERY_PERSON", "ADMIN"
 // OrderStatus: "PENDING", "CONFIRMED", "PREPARING", "READY_FOR_DELIVERY", "OUT_FOR_DELIVERY", "DELIVERED", "CANCELLED"
