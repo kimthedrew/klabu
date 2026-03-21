@@ -26,6 +26,7 @@ import axios from 'axios';
 import toast from 'react-hot-toast';
 import io from 'socket.io-client';
 import { API_BASE_URL, API_URL } from '../../lib/config';
+import NotificationBell from '../../components/NotificationBell';
 
 interface Stall {
   id: string;
@@ -125,7 +126,10 @@ export default function StallDashboard() {
     const socketConnection = io(API_URL);
     setSocket(socketConnection);
 
-    // Join stall room for real-time notifications
+    // Join user room for personal notifications
+    socketConnection.emit('join-user', parsedUser.id);
+
+    // Join stall room for real-time order updates
     if (parsedUser.profile?.stall?.id) {
       socketConnection.emit('join-stall', parsedUser.profile.stall.id);
     }
@@ -469,6 +473,10 @@ export default function StallDashboard() {
               </div>
               <div className="flex items-center space-x-4">
                 <span className="text-sm text-gray-600">Welcome, {user?.profile?.fullName}</span>
+                <NotificationBell
+                  token={typeof window !== 'undefined' ? localStorage.getItem('token') ?? '' : ''}
+                  socket={socket}
+                />
                 <button
                   onClick={handleLogout}
                   className="flex items-center text-gray-600 hover:text-gray-900"

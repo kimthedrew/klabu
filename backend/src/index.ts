@@ -14,6 +14,8 @@ import adminRoutes from './routes/admin';
 import reviewRoutes from './routes/reviews';
 import paymentRoutes from './routes/payments';
 import { startBackupScheduler } from './utils/backup';
+import { setSocketIO } from './utils/notify';
+import notificationRoutes from './routes/notifications';
 
 // Load environment variables
 dotenv.config();
@@ -47,6 +49,8 @@ const io = new Server(server, {
   }
 });
 
+setSocketIO(io);
+
 // Middleware
 app.use(helmet());
 app.use(cors(corsOptions));
@@ -67,6 +71,7 @@ app.use('/api/deliveries', deliveryRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/payments', paymentRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -77,11 +82,16 @@ app.get('/api/health', (req, res) => {
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
   
+  // Join user to their personal notification room
+  socket.on('join-user', (userId: string) => {
+    socket.join(`user:${userId}`);
+  });
+
   // Join delivery person to their room
   socket.on('join-delivery', (deliveryPersonId) => {
     socket.join(`delivery-${deliveryPersonId}`);
   });
-  
+
   // Join stall owner to their room
   socket.on('join-stall', (stallId) => {
     socket.join(`stall-${stallId}`);

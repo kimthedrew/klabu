@@ -1,5 +1,6 @@
 import { prisma } from '../prismaClient';
 import { io } from '../index';
+import { createNotification } from '../utils/notify';
 
 export class DeliveryAssignmentService {
   private static assignmentTimers = new Map<string, NodeJS.Timeout>();
@@ -107,7 +108,7 @@ export class DeliveryAssignmentService {
         }
       });
 
-      // Notify the delivery person
+      // Notify the delivery person via socket + persistent notification
       io.to(`delivery-${deliveryPerson.id}`).emit('delivery-assignment', {
         assignmentId: assignment.id,
         orderId,
@@ -119,6 +120,14 @@ export class DeliveryAssignmentService {
         stallName: assignment.order.stall.name,
         expiresAt: expiresAt.toISOString()
       });
+
+      createNotification({
+        userId: deliveryPerson.userId,
+        type: 'DELIVERY_ASSIGNED',
+        title: 'New Delivery Assignment',
+        message: `You have a new delivery from ${assignment.order.stall.name} to ${assignment.order.deliveryLocation}`,
+        data: { assignmentId: assignment.id, orderId }
+      }).catch(() => {});
 
       // Set timer to move to next delivery person if no response
       const timer = setTimeout(async () => {

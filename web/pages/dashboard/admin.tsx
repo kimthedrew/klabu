@@ -2,14 +2,15 @@ import { useState, useEffect } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { 
-  BarChart3, 
-  Users, 
-  Store, 
-  Truck, 
-  DollarSign, 
+import {
+  BarChart3,
+  Users,
+  Store,
+  Truck,
+  DollarSign,
   LogOut,
   Eye,
+  EyeOff,
   ToggleLeft,
   ToggleRight,
   TrendingUp,
@@ -18,11 +19,15 @@ import {
   Clock,
   Star,
   Package,
-  User
+  User,
+  Lock,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { API_BASE_URL } from '../../lib/config';
+import NotificationBell from '../../components/NotificationBell';
 
 interface DashboardStats {
   totalStalls: number;
@@ -94,6 +99,11 @@ export default function AdminDashboard() {
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [stkPushEnabled, setStkPushEnabled] = useState(false);
   const [togglingStk, setTogglingStk] = useState(false);
+  const [showPasswordSection, setShowPasswordSection] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
+  const [showCurrentPw, setShowCurrentPw] = useState(false);
+  const [showNewPw, setShowNewPw] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -180,6 +190,34 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      toast.error('New passwords do not match');
+      return;
+    }
+    if (passwordForm.newPassword.length < 6) {
+      toast.error('New password must be at least 6 characters');
+      return;
+    }
+    setChangingPassword(true);
+    try {
+      const token = localStorage.getItem('token');
+      await axios.post(
+        `${API_BASE_URL}/auth/change-password`,
+        { currentPassword: passwordForm.currentPassword, newPassword: passwordForm.newPassword },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      toast.success('Password changed successfully');
+      setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+      setShowPasswordSection(false);
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Failed to change password');
+    } finally {
+      setChangingPassword(false);
+    }
+  };
+
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
@@ -228,6 +266,9 @@ export default function AdminDashboard() {
               </div>
               <div className="flex items-center space-x-4">
                 <span className="text-sm text-gray-600">Welcome, {user?.profile?.fullName || 'Admin'}</span>
+                <NotificationBell
+                  token={typeof window !== 'undefined' ? localStorage.getItem('token') ?? '' : ''}
+                />
                 <button
                   onClick={handleLogout}
                   className="flex items-center text-gray-600 hover:text-gray-900"
@@ -437,8 +478,102 @@ export default function AdminDashboard() {
             </div>
           </div>
 
+          {/* Security Settings */}
+          <div className="mt-8 bg-white rounded-lg shadow p-6">
+            <button
+              className="w-full flex items-center justify-between"
+              onClick={() => setShowPasswordSection(prev => !prev)}
+            >
+              <div className="flex items-center gap-3">
+                <div className="bg-gray-100 rounded-full p-2">
+                  <Lock size={18} className="text-gray-600" />
+                </div>
+                <div className="text-left">
+                  <h2 className="text-lg font-semibold text-gray-900">Security</h2>
+                  <p className="text-sm text-gray-500">Change your admin account password</p>
+                </div>
+              </div>
+              {showPasswordSection ? <ChevronUp size={20} className="text-gray-400" /> : <ChevronDown size={20} className="text-gray-400" />}
+            </button>
+
+            {showPasswordSection && (
+              <form onSubmit={handleChangePassword} className="mt-6 space-y-4 max-w-md">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Current Password</label>
+                  <div className="relative">
+                    <input
+                      type={showCurrentPw ? 'text' : 'password'}
+                      required
+                      value={passwordForm.currentPassword}
+                      onChange={e => setPasswordForm(f => ({ ...f, currentPassword: e.target.value }))}
+                      className="w-full px-4 py-2.5 pr-10 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                      placeholder="Enter current password"
+                    />
+                    <button
+                      type="button"
+                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+                      onClick={() => setShowCurrentPw(p => !p)}
+                    >
+                      {showCurrentPw ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">New Password</label>
+                  <div className="relative">
+                    <input
+                      type={showNewPw ? 'text' : 'password'}
+                      required
+                      value={passwordForm.newPassword}
+                      onChange={e => setPasswordForm(f => ({ ...f, newPassword: e.target.value }))}
+                      className="w-full px-4 py-2.5 pr-10 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                      placeholder="Min. 6 characters"
+                    />
+                    <button
+                      type="button"
+                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+                      onClick={() => setShowNewPw(p => !p)}
+                    >
+                      {showNewPw ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Confirm New Password</label>
+                  <input
+                    type="password"
+                    required
+                    value={passwordForm.confirmPassword}
+                    onChange={e => setPasswordForm(f => ({ ...f, confirmPassword: e.target.value }))}
+                    className="w-full px-4 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    placeholder="Repeat new password"
+                  />
+                </div>
+
+                <div className="flex gap-3 pt-1">
+                  <button
+                    type="submit"
+                    disabled={changingPassword}
+                    className="px-5 py-2.5 bg-green-600 hover:bg-green-700 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {changingPassword ? 'Saving...' : 'Update Password'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setShowPasswordSection(false); setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' }); }}
+                    className="px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium rounded-lg transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+
           {/* Payment Settings */}
-          <div className="mt-8 card">
+          <div className="mt-8 bg-white rounded-lg shadow p-6">
             <h2 className="text-xl font-semibold text-gray-900 mb-6">Payment Settings</h2>
             <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
               <div>

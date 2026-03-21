@@ -4,6 +4,7 @@ import { prisma } from '../prismaClient';
 import { authenticateToken, requireRole, AuthRequest } from '../utils/auth';
 import { io } from '../index';
 import { DeliveryAssignmentService } from '../services/deliveryAssignmentService';
+import { createNotification, notifyAdmins } from '../utils/notify';
 
 const router = express.Router();
 
@@ -255,12 +256,35 @@ router.patch('/:orderId/status', authenticateToken, requireRole(['DELIVERY_PERSO
       });
     }
 
-    // Notify stall owner
+    // Notify stall owner via socket + persistent notification
     io.to(`stall-${order.stallId}`).emit('delivery-status-updated', {
       orderId,
       status,
       deliveryPerson: updatedOrder.deliveryPerson
     });
+
+    // Notify stall owner and admin when delivery is completed
+    if (status === 'DELIVERED') {
+      const stall = await prisma.stall.findUnique({
+        where: { id: order.stallId },
+        select: { stallOwner: { select: { userId: true } }, name: true }
+      });
+      if (stall?.stallOwner.userId) {
+        createNotification({
+          userId: stall.stallOwner.userId,
+          type: 'DELIVERY_COMPLETED',
+          title: 'Order Delivered',
+          message: `Order #${orderId.slice(-6)} has been delivered successfully`,
+          data: { orderId }
+        }).catch(() => {});
+      }
+      notifyAdmins({
+        type: 'DELIVERY_COMPLETED',
+        title: 'Delivery Completed',
+        message: `Order #${orderId.slice(-6)} delivered by ${updatedOrder.deliveryPerson?.fullName ?? 'delivery person'}`,
+        data: { orderId }
+      }).catch(() => {});
+    }
 
     res.json({
       message: 'Delivery status updated successfully',

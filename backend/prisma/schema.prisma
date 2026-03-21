@@ -18,9 +18,16 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Password reset fields
+  resetToken            String?
+  resetTokenExpiry      DateTime?
+  pendingPasswordReset  Boolean  @default(false)
+
   // Relations
-  stallOwner    StallOwner?
-  deliveryPerson DeliveryPerson?
+  stallOwner            StallOwner?
+  deliveryPerson        DeliveryPerson?
+  notifications         Notification[]
+  passwordResetRequests PasswordResetRequest[]
 
   @@map("users")
 }
@@ -288,9 +295,41 @@ model PaymentConfig {
   @@map("payment_config")
 }
 
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type      String   // ORDER_PLACED, ORDER_STATUS_UPDATED, DELIVERY_ASSIGNED, DELIVERY_COMPLETED, RESET_REQUESTED, RESET_APPROVED, RESET_REJECTED, NEW_STALL_REGISTERED, NEW_REVIEW, STALL_APPROVED
+  title     String
+  message   String
+  isRead    Boolean  @default(false)
+  data      String?  // JSON string for extra context (e.g. orderId, requestId)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, isRead])
+  @@map("notifications")
+}
+
+model PasswordResetRequest {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  status      String    @default("PENDING") // PENDING, APPROVED, REJECTED
+  resolvedBy  String?   // admin userId who acted on it
+  resolvedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([status])
+  @@map("password_reset_requests")
+}
+
 // Note: Using String types for status/role fields (no enums) for simplicity
 // Valid values:
 // UserRole: "STALL_OWNER", "DELIVERY_PERSON", "ADMIN"
 // OrderStatus: "PENDING", "CONFIRMED", "PREPARING", "READY_FOR_DELIVERY", "OUT_FOR_DELIVERY", "DELIVERED", "CANCELLED"
 // PaymentStatus: "PENDING", "CONFIRMED", "FAILED"
 // DeliveryStatus: "PENDING", "ASSIGNED", "ACCEPTED", "PICKED_UP", "DELIVERED", "CANCELLED"
+// PasswordResetRequest.status: "PENDING", "APPROVED", "REJECTED"

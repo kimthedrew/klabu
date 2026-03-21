@@ -1,7 +1,10 @@
 import express from 'express';
 import Joi from 'joi';
+import crypto from 'crypto';
 import { prisma } from '../prismaClient';
-import { hashPassword, comparePassword, generateToken, authenticateToken } from '../utils/auth';
+import { hashPassword, comparePassword, generateToken, authenticateToken, AuthRequest } from '../utils/auth';
+import { sendPasswordResetEmail } from '../utils/email';
+import { createNotification, notifyAdmins } from '../utils/notify';
 
 const router = express.Router();
 
@@ -42,7 +45,8 @@ router.post('/register', async (req, res) => {
   try {
     const { error, value } = registerSchema.validate(req.body);
     if (error) {
-      return res.status(400).json({ error: error.details[0].message });
+      res.status(400).json({ error: error.details[0]?.message ?? 'Validation error' });
+      return;
     }
 
     const { email, password, role, fullName, phoneNumber, businessName, idNumber, paymentMode, mpesaNumber, tillNumber } = value;
@@ -53,7 +57,8 @@ router.post('/register', async (req, res) => {
     });
 
     if (existingUser) {
-      return res.status(400).json({ error: 'User with this email already exists' });
+      res.status(400).json({ error: 'User with this email already exists' });
+      return;
     }
 
     // Check if delivery person with this ID already exists
@@ -63,7 +68,8 @@ router.post('/register', async (req, res) => {
       });
 
       if (existingDeliveryPerson) {
-        return res.status(400).json({ error: 'Delivery person with this ID number already exists' });
+        res.status(400).json({ error: 'Delivery person with this ID number already exists' });
+        return;
       }
     }
 
@@ -103,6 +109,14 @@ router.post('/register', async (req, res) => {
       }
     });
 
+    // Notify admins of new registration
+    notifyAdmins({
+      type: 'NEW_STALL_REGISTERED',
+      title: 'New Registration',
+      message: `${email} registered as ${role === 'STALL_OWNER' ? 'a stall owner' : 'a delivery person'}`,
+      data: { userId: user.id, email, role }
+    }).catch(() => {}); // fire-and-forget
+
     // Generate token
     const token = generateToken(user.id, user.email, user.role);
 
@@ -128,7 +142,8 @@ router.post('/login', async (req, res) => {
   try {
     const { error, value } = loginSchema.validate(req.body);
     if (error) {
-      return res.status(400).json({ error: error.details[0].message });
+      res.status(400).json({ error: error.details[0]?.message ?? 'Validation error' });
+      return;
     }
 
     const { email, password } = value;
@@ -143,13 +158,15 @@ router.post('/login', async (req, res) => {
     });
 
     if (!user) {
-      return res.status(401).json({ error: 'Invalid credentials' });
+      res.status(401).json({ error: 'Invalid credentials' });
+      return;
     }
 
     // Check password
     const isValidPassword = await comparePassword(password, user.password);
     if (!isValidPassword) {
-      return res.status(401).json({ error: 'Invalid credentials' });
+      res.status(401).json({ error: 'Invalid credentials' });
+      return;
     }
 
     // Generate token
@@ -173,7 +190,7 @@ router.post('/login', async (req, res) => {
 });
 
 // Get current user profile
-router.get('/me', authenticateToken, async (req, res) => {
+router.get('/me', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const user = await prisma.user.findUnique({
       where: { id: req.user!.id },
@@ -192,7 +209,8 @@ router.get('/me', authenticateToken, async (req, res) => {
     });
 
     if (!user) {
-      return res.status(404).json({ error: 'User not found' });
+      res.status(404).json({ error: 'User not found' });
+      return;
     }
 
     res.json({
@@ -206,6 +224,156 @@ router.get('/me', authenticateToken, async (req, res) => {
 
   } catch (error) {
     console.error('Get profile error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Change password (authenticated)
+router.post('/change-password', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword || newPassword.length < 6) {
+      res.status(400).json({ error: 'currentPassword and newPassword (min 6 chars) are required' });
+      return;
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: req.user!.id } });
+    if (!user) { res.status(404).json({ error: 'User not found' }); return; }
+
+    const valid = await comparePassword(currentPassword, user.password);
+    if (!valid) { res.status(400).json({ error: 'Current password is incorrect' }); return; }
+
+    const hashed = await hashPassword(newPassword);
+    await prisma.user.update({ where: { id: user.id }, data: { password: hashed } });
+
+    res.json({ message: 'Password changed successfully' });
+  } catch (error) {
+    console.error('Change password error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Forgot password — send reset email
+router.post('/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) { res.status(400).json({ error: 'Email is required' }); return; }
+
+    const user = await prisma.user.findUnique({ where: { email } });
+    // Always respond success to avoid email enumeration
+    if (!user) { res.json({ message: 'If that email exists, a reset link has been sent' }); return; }
+
+    const token = crypto.randomBytes(32).toString('hex');
+    const expiry = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { resetToken: token, resetTokenExpiry: expiry }
+    });
+
+    await sendPasswordResetEmail(email, token);
+    res.json({ message: 'If that email exists, a reset link has been sent' });
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Reset password via email token
+router.post('/reset-password', async (req, res) => {
+  try {
+    const { token, newPassword } = req.body;
+    if (!token || !newPassword || newPassword.length < 6) {
+      res.status(400).json({ error: 'token and newPassword (min 6 chars) are required' });
+      return;
+    }
+
+    const user = await prisma.user.findFirst({
+      where: { resetToken: token, resetTokenExpiry: { gt: new Date() } }
+    });
+    if (!user) { res.status(400).json({ error: 'Invalid or expired reset token' }); return; }
+
+    const hashed = await hashPassword(newPassword);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { password: hashed, resetToken: null, resetTokenExpiry: null }
+    });
+
+    res.json({ message: 'Password reset successfully' });
+  } catch (error) {
+    console.error('Reset password error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Request admin-initiated password reset
+router.post('/request-reset', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    // Check for existing pending request
+    const existing = await prisma.passwordResetRequest.findFirst({
+      where: { userId: req.user!.id, status: 'PENDING' }
+    });
+    if (existing) { res.status(400).json({ error: 'You already have a pending reset request' }); return; }
+
+    const resetRequest = await prisma.passwordResetRequest.create({
+      data: { userId: req.user!.id }
+    });
+
+    // Notify all admins
+    await notifyAdmins({
+      type: 'RESET_REQUESTED',
+      title: 'Password Reset Request',
+      message: `${req.user!.email} has requested a password reset`,
+      data: { requestId: resetRequest.id, userEmail: req.user!.email }
+    });
+
+    res.json({ message: 'Reset request submitted. An admin will review it shortly.' });
+  } catch (error) {
+    console.error('Request reset error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Check if user has approved pending password reset (called on login page)
+router.post('/check-reset-status', async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) { res.status(400).json({ error: 'Email is required' }); return; }
+
+    const user = await prisma.user.findUnique({ where: { email }, select: { pendingPasswordReset: true } });
+    if (!user) { res.json({ pendingPasswordReset: false }); return; }
+
+    res.json({ pendingPasswordReset: user.pendingPasswordReset });
+  } catch (error) {
+    console.error('Check reset status error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Set new password after admin approval (no auth needed — user may not know old password)
+router.post('/set-new-password', async (req, res) => {
+  try {
+    const { email, newPassword } = req.body;
+    if (!email || !newPassword || newPassword.length < 6) {
+      res.status(400).json({ error: 'email and newPassword (min 6 chars) are required' });
+      return;
+    }
+
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user || !user.pendingPasswordReset) {
+      res.status(400).json({ error: 'No approved password reset found for this account' });
+      return;
+    }
+
+    const hashed = await hashPassword(newPassword);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { password: hashed, pendingPasswordReset: false }
+    });
+
+    res.json({ message: 'Password updated successfully. You can now log in.' });
+  } catch (error) {
+    console.error('Set new password error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

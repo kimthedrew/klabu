@@ -2,6 +2,7 @@ import express from 'express';
 import { prisma } from '../prismaClient';
 import { authenticateToken, requireRole, AuthRequest } from '../utils/auth';
 import { getCache, setCache, invalidateCache } from '../utils/cache';
+import { createNotification } from '../utils/notify';
 
 const router = express.Router();
 
@@ -378,46 +379,49 @@ router.patch('/delivery-persons/:id/approve', authenticateToken, requireRole(['A
 
 // Toggle stall owner active status
 router.patch('/stall-owners/:id/toggle', authenticateToken, requireRole(['ADMIN']), async (req: AuthRequest, res) => {
-  try {
-    const { id } = req.params;
+  const { id } = req.params;
 
-    const stallOwner = await prisma.stallOwner.findUnique({
-      where: { id },
-      include: {
-        stall: true
-      }
-    });
+  const stallOwner = await prisma.stallOwner.findUnique({
+    where: { id },
+    include: { stall: true }
+  });
 
-    if (!stallOwner) {
-      return res.status(404).json({ error: 'Stall owner not found' });
-    }
-
-    const updatedStallOwner = await prisma.stallOwner.update({
-      where: { id },
-      data: { isActive: !stallOwner.isActive },
-      include: {
-        user: true,
-        stall: true
-      }
-    });
-
-    // Also toggle the stall's active status if it exists
-    if (stallOwner.stall) {
-      await prisma.stall.update({
-        where: { id: stallOwner.stall.id },
-        data: { isActive: !stallOwner.isActive }
-      });
-    }
-
-    res.json({
-      message: `Stall owner ${updatedStallOwner.isActive ? 'activated' : 'deactivated'} successfully`,
-      stallOwner: updatedStallOwner
-    });
-
-  } catch (error) {
-    console.error('Toggle stall owner status error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+  if (!stallOwner) {
+    return res.status(404).json({ error: 'Stall owner not found' });
   }
+
+  const newActive = !stallOwner.isActive;
+
+  // CockroachDB can return P2034 (write conflict) — retry up to 5 times
+  let updatedStallOwner: any = null;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      updatedStallOwner = await prisma.$transaction(async (tx) => {
+        const updated = await tx.stallOwner.update({
+          where: { id },
+          data: { isActive: newActive },
+          include: { user: true, stall: true }
+        });
+        if (stallOwner.stall) {
+          await tx.stall.update({
+            where: { id: stallOwner.stall.id },
+            data: { isActive: newActive }
+          });
+        }
+        return updated;
+      });
+      break;
+    } catch (err: any) {
+      if (err?.code === 'P2034' && attempt < 4) continue;
+      console.error('Toggle stall owner status error:', err);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  return res.json({
+    message: `Stall owner ${updatedStallOwner.isActive ? 'activated' : 'deactivated'} successfully`,
+    stallOwner: updatedStallOwner
+  });
 });
 
 // Toggle delivery person active status
@@ -588,6 +592,70 @@ router.post('/settlements/entries/clear', authenticateToken, requireRole(['ADMIN
     res.json({ message: 'Entries cleared', updated: result.count });
   } catch (error) {
     console.error('Clear ledger entries error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// List all password reset requests
+router.get('/reset-requests', authenticateToken, requireRole(['ADMIN']), async (req: AuthRequest, res) => {
+  try {
+    const { status } = req.query;
+    const requests = await prisma.passwordResetRequest.findMany({
+      where: status ? { status: status as string } : undefined,
+      include: { user: { select: { id: true, email: true, role: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
+    res.json({ requests });
+  } catch (error) {
+    console.error('Get reset requests error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Approve or reject a password reset request
+router.patch('/reset-requests/:id', authenticateToken, requireRole(['ADMIN']), async (req: AuthRequest, res) => {
+  try {
+    const { action } = req.body as { action: 'approve' | 'reject' };
+    if (!['approve', 'reject'].includes(action)) {
+      return res.status(400).json({ error: 'action must be "approve" or "reject"' });
+    }
+
+    const request = await prisma.passwordResetRequest.findUnique({
+      where: { id: req.params['id'] },
+      include: { user: true },
+    });
+    if (!request) return res.status(404).json({ error: 'Reset request not found' });
+    if (request.status !== 'PENDING') return res.status(400).json({ error: 'Request already resolved' });
+
+    const newStatus = action === 'approve' ? 'APPROVED' : 'REJECTED';
+
+    await prisma.passwordResetRequest.update({
+      where: { id: request.id },
+      data: { status: newStatus, resolvedBy: req.user!.id, resolvedAt: new Date() },
+    });
+
+    if (action === 'approve') {
+      // Flag user account so they can set a new password on the login page
+      await prisma.user.update({
+        where: { id: request.userId },
+        data: { pendingPasswordReset: true },
+      });
+    }
+
+    // Notify the user of the decision
+    await createNotification({
+      userId: request.userId,
+      type: action === 'approve' ? 'RESET_APPROVED' : 'RESET_REJECTED',
+      title: action === 'approve' ? 'Password Reset Approved' : 'Password Reset Rejected',
+      message: action === 'approve'
+        ? 'Your password reset request was approved. Go to the login page to set a new password.'
+        : 'Your password reset request was rejected. Contact the admin if you think this is a mistake.',
+      data: { requestId: request.id },
+    });
+
+    res.json({ message: `Request ${newStatus.toLowerCase()}` });
+  } catch (error) {
+    console.error('Resolve reset request error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

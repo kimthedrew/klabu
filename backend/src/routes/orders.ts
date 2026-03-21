@@ -5,6 +5,7 @@ import { authenticateToken, requireRole, AuthRequest } from '../utils/auth';
 import { io } from '../index';
 import { DeliveryAssignmentService } from '../services/deliveryAssignmentService';
 import { getCache } from '../utils/cache';
+import { createNotification, notifyAdmins } from '../utils/notify';
 
 const router = express.Router();
 
@@ -131,7 +132,7 @@ router.post('/', async (req, res) => {
 
     // Payment will be confirmed by stall owner after verification
 
-    // Notify stall owner
+    // Notify stall owner via socket + persistent notification
     io.to(`stall-${stallId}`).emit('new-order', {
       orderId: order.id,
       customerName,
@@ -139,6 +140,22 @@ router.post('/', async (req, res) => {
       items: order.items,
       paymentStatus: order.paymentStatus
     });
+
+    const stallOwnerUserId = order.stall.stallOwner.userId;
+    createNotification({
+      userId: stallOwnerUserId,
+      type: 'ORDER_PLACED',
+      title: 'New Order Received',
+      message: `${customerName} placed an order worth KES ${finalTotal}`,
+      data: { orderId: order.id, totalAmount: finalTotal }
+    }).catch(() => {});
+
+    notifyAdmins({
+      type: 'ORDER_PLACED',
+      title: 'New Order',
+      message: `New order from ${customerName} at ${order.stall.name} — KES ${finalTotal}`,
+      data: { orderId: order.id, stallId }
+    }).catch(() => {});
 
     res.status(201).json({
       message: 'Order created successfully',
@@ -409,6 +426,23 @@ router.patch('/:orderId/status', authenticateToken, requireRole(['STALL_OWNER'])
       } catch (error) {
         console.error('Error starting delivery assignment:', error);
         // Don't fail the request, just log the error
+      }
+    }
+
+    // Notify assigned delivery person of status change
+    if (updatedOrder.deliveryPersonId) {
+      const dpUser = await prisma.deliveryPerson.findUnique({
+        where: { id: updatedOrder.deliveryPersonId },
+        select: { userId: true }
+      });
+      if (dpUser) {
+        createNotification({
+          userId: dpUser.userId,
+          type: 'ORDER_STATUS_UPDATED',
+          title: 'Order Status Updated',
+          message: `Order status changed to ${status}`,
+          data: { orderId, status }
+        }).catch(() => {});
       }
     }
 

@@ -20,6 +20,7 @@ import axios from 'axios';
 import toast from 'react-hot-toast';
 import io from 'socket.io-client';
 import { API_BASE_URL, API_URL } from '../../lib/config';
+import NotificationBell from '../../components/NotificationBell';
 
 interface Delivery {
   id: string;
@@ -114,7 +115,10 @@ export default function DeliveryDashboard() {
     const socketConnection = io(API_URL);
     setSocket(socketConnection);
 
-    // Join delivery person room for real-time notifications
+    // Join user room for personal notifications
+    socketConnection.emit('join-user', parsedUser.id);
+
+    // Join delivery person room for assignment events
     if (parsedUser.profile?.id) {
       socketConnection.emit('join-delivery', parsedUser.profile.id);
     }
@@ -329,6 +333,10 @@ export default function DeliveryDashboard() {
               </div>
               <div className="flex items-center space-x-4">
                 <span className="text-sm text-gray-600">Welcome, {user?.profile?.fullName}</span>
+                <NotificationBell
+                  token={typeof window !== 'undefined' ? localStorage.getItem('token') ?? '' : ''}
+                  socket={socket}
+                />
                 <button
                   onClick={handleLogout}
                   className="flex items-center text-gray-600 hover:text-gray-900"

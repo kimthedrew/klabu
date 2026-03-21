@@ -14,6 +14,12 @@ export async function runBackup() {
     return;
   }
 
+  // CockroachDB Cloud manages its own backups — pg_dump is incompatible
+  if (!databaseUrl.startsWith('file:')) {
+    console.log('[Backup] Remote database detected — skipping local backup (CockroachDB Cloud manages backups automatically)');
+    return;
+  }
+
   if (!fs.existsSync(BACKUP_DIR)) {
     fs.mkdirSync(BACKUP_DIR, { recursive: true });
   }

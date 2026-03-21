@@ -1,0 +1,16 @@
+# Koyeb service configuration
+# This file helps Koyeb understand your monorepo structure
+# Note: You still need to configure services manually in the dashboard
+# and select "Docker" as the build type
+
+# Backend service configuration
+backend:
+  dockerfile: backend/Dockerfile
+  context: .
+  port: 5000
+
+# Frontend service configuration  
+frontend:
+  dockerfile: web/Dockerfile
+  context: .
+  port: 3000
