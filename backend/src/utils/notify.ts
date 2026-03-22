@@ -3,6 +3,15 @@ import { Server } from 'socket.io';
 
 let io: Server | null = null;
 
+// Cache admin IDs — they never change at runtime
+let adminIdCache: string[] | null = null;
+async function getAdminIds(): Promise<string[]> {
+  if (adminIdCache) return adminIdCache;
+  const admins = await prisma.user.findMany({ where: { role: 'ADMIN' }, select: { id: true } });
+  adminIdCache = admins.map(a => a.id);
+  return adminIdCache;
+}
+
 export function setSocketIO(socketIO: Server) {
   io = socketIO;
 }
@@ -56,6 +65,6 @@ export async function createNotification(opts: CreateNotificationOptions) {
 
 /** Notify all admins */
 export async function notifyAdmins(opts: Omit<CreateNotificationOptions, 'userId'>) {
-  const admins = await prisma.user.findMany({ where: { role: 'ADMIN' }, select: { id: true } });
-  await Promise.all(admins.map(admin => createNotification({ ...opts, userId: admin.id })));
+  const adminIds = await getAdminIds();
+  await Promise.all(adminIds.map(id => createNotification({ ...opts, userId: id })));
 }

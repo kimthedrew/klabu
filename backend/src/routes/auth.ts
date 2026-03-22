@@ -1,10 +1,35 @@
 import express from 'express';
 import Joi from 'joi';
 import crypto from 'crypto';
+import rateLimit from 'express-rate-limit';
 import { prisma } from '../prismaClient';
 import { hashPassword, comparePassword, generateToken, authenticateToken, AuthRequest } from '../utils/auth';
 import { sendPasswordResetEmail } from '../utils/email';
 import { createNotification, notifyAdmins } from '../utils/notify';
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10,
+  message: { error: 'Too many login attempts. Please try again in 15 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const registerLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 10,
+  message: { error: 'Too many registration attempts. Please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const forgotPasswordLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 5,
+  message: { error: 'Too many password reset requests. Please try again in an hour.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 const router = express.Router();
 
@@ -41,7 +66,7 @@ const loginSchema = Joi.object({
 });
 
 // Register new user (stall owner or delivery person)
-router.post('/register', async (req, res) => {
+router.post('/register', registerLimiter, async (req, res) => {
   try {
     const { error, value } = registerSchema.validate(req.body);
     if (error) {
@@ -138,7 +163,7 @@ router.post('/register', async (req, res) => {
 });
 
 // Login user
-router.post('/login', async (req, res) => {
+router.post('/login', loginLimiter, async (req, res) => {
   try {
     const { error, value } = loginSchema.validate(req.body);
     if (error) {
@@ -254,7 +279,7 @@ router.post('/change-password', authenticateToken, async (req: AuthRequest, res)
 });
 
 // Forgot password — send reset email
-router.post('/forgot-password', async (req, res) => {
+router.post('/forgot-password', forgotPasswordLimiter, async (req, res) => {
   try {
     const { email } = req.body;
     if (!email) { res.status(400).json({ error: 'Email is required' }); return; }

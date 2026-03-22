@@ -83,11 +83,6 @@ router.get('/', async (req, res) => {
             menuItems: {
               where: { isAvailable: true },
               orderBy: { name: 'asc' }
-            },
-            reviews: {
-              include: {
-                order: true
-              }
             }
           }
         }
@@ -97,22 +92,14 @@ router.get('/', async (req, res) => {
       }
     });
 
-    // Calculate average ratings
-    const stallsWithRatings = stalls.map(stall => {
-      const reviews = stall.stall?.reviews || [];
-      const averageRating = reviews.length > 0 
-        ? reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length 
-        : 0;
-
-      return {
-        ...stall,
-        stall: stall.stall ? {
-          ...stall.stall,
-          averageRating: Math.round(averageRating * 10) / 10,
-          totalReviews: reviews.length
-        } : null
-      };
-    });
+    // averageRating and reviewCount are stored on the stall — no reviews join needed
+    const stallsWithRatings = stalls.map(stall => ({
+      ...stall,
+      stall: stall.stall ? {
+        ...stall.stall,
+        totalReviews: stall.stall.reviewCount
+      } : null
+    }));
 
     const response = { stalls: stallsWithRatings };
     if (!search && !food) setCache('stalls:list', response, 120);
@@ -139,12 +126,6 @@ router.get('/:stallId', async (req, res) => {
         menuItems: {
           where: { isAvailable: true },
           orderBy: { name: 'asc' }
-        },
-        reviews: {
-          include: {
-            order: true
-          },
-          orderBy: { createdAt: 'desc' }
         }
       }
     });
@@ -153,16 +134,10 @@ router.get('/:stallId', async (req, res) => {
       return res.status(404).json({ error: 'Stall not found' });
     }
 
-    // Calculate average rating
-    const reviews = stall.reviews;
-    const averageRating = reviews.length > 0 
-      ? reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length 
-      : 0;
-
+    // averageRating and reviewCount are stored directly on the stall record
     const response = {
       ...stall,
-      averageRating: Math.round(averageRating * 10) / 10,
-      totalReviews: reviews.length
+      totalReviews: stall.reviewCount
     };
     setCache(`stalls:single:${stallId}`, response, 120);
     res.json(response);

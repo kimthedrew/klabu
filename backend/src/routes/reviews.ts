@@ -75,27 +75,16 @@ router.get('/', async (req, res) => {
 router.get('/stalls', async (req, res) => {
   try {
     const stalls = await prisma.stall.findMany({
-      where: {
-        isActive: true
-      },
-      include: {
-        reviews: true
-      }
+      where: { isActive: true },
+      select: { id: true, name: true, averageRating: true, reviewCount: true }
     });
 
-    const stallsWithStats = stalls.map(stall => {
-      const reviews = stall.reviews;
-      const averageRating = reviews.length > 0 
-        ? reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length 
-        : 0;
-
-      return {
-        id: stall.id,
-        name: stall.name,
-        averageRating: Math.round(averageRating * 10) / 10,
-        totalReviews: reviews.length
-      };
-    });
+    const stallsWithStats = stalls.map(stall => ({
+      id: stall.id,
+      name: stall.name,
+      averageRating: stall.averageRating,
+      totalReviews: stall.reviewCount
+    }));
 
     res.json({ stalls: stallsWithStats });
 
@@ -221,6 +210,22 @@ router.post('/', async (req, res) => {
         }
       }
     });
+
+    // Update cached rating stats on the stall
+    if (type === 'stall') {
+      const agg = await prisma.review.aggregate({
+        where: { stallId: targetId },
+        _avg: { rating: true },
+        _count: { id: true }
+      });
+      await prisma.stall.update({
+        where: { id: targetId },
+        data: {
+          averageRating: Math.round((agg._avg.rating ?? 0) * 10) / 10,
+          reviewCount: agg._count.id
+        }
+      });
+    }
 
     res.status(201).json({
       message: 'Review created successfully',

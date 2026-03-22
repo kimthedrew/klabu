@@ -91,11 +91,13 @@ model Stall {
   stallOwnerId String  @unique
   stallOwner  StallOwner @relation(fields: [stallOwnerId], references: [id], onDelete: Cascade)
   
-  name        String
-  description String?
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  name          String
+  description   String?
+  isActive      Boolean  @default(true)
+  averageRating Float    @default(0)
+  reviewCount   Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   // Relations
   menuItems MenuItem[]

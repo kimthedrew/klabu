@@ -16,6 +16,8 @@ import paymentRoutes from './routes/payments';
 import { startBackupScheduler } from './utils/backup';
 import { setSocketIO } from './utils/notify';
 import notificationRoutes from './routes/notifications';
+import { verifyToken } from './utils/auth';
+import { prisma } from './prismaClient';
 
 // Load environment variables
 dotenv.config();
@@ -51,11 +53,25 @@ const io = new Server(server, {
 
 setSocketIO(io);
 
+// Authenticate every socket connection via JWT
+io.use((socket, next) => {
+  const token = socket.handshake.auth?.token as string | undefined;
+  if (!token) return next(new Error('Authentication required'));
+  try {
+    const decoded = verifyToken(token);
+    socket.data.userId = decoded.userId;
+    socket.data.role = decoded.role;
+    next();
+  } catch {
+    next(new Error('Invalid or expired token'));
+  }
+});
+
 // Middleware
 app.use(helmet());
 app.use(cors(corsOptions));
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json({ limit: '500kb' }));
+app.use(express.urlencoded({ extended: true, limit: '500kb' }));
 
 // Make io accessible to routes
 app.use((req, res, next) => {
@@ -84,17 +100,29 @@ io.on('connection', (socket) => {
   
   // Join user to their personal notification room
   socket.on('join-user', (userId: string) => {
-    socket.join(`user:${userId}`);
+    if (userId === socket.data.userId) {
+      socket.join(`user:${userId}`);
+    }
   });
 
-  // Join delivery person to their room
-  socket.on('join-delivery', (deliveryPersonId) => {
-    socket.join(`delivery-${deliveryPersonId}`);
+  // Join delivery person to their room — verify ownership
+  socket.on('join-delivery', async (deliveryPersonId: string) => {
+    if (socket.data.role !== 'DELIVERY_PERSON') return;
+    const dp = await prisma.deliveryPerson.findFirst({
+      where: { id: deliveryPersonId, userId: socket.data.userId },
+      select: { id: true }
+    });
+    if (dp) socket.join(`delivery-${deliveryPersonId}`);
   });
 
-  // Join stall owner to their room
-  socket.on('join-stall', (stallId) => {
-    socket.join(`stall-${stallId}`);
+  // Join stall owner to their room — verify ownership
+  socket.on('join-stall', async (stallId: string) => {
+    if (socket.data.role !== 'STALL_OWNER') return;
+    const stall = await prisma.stall.findFirst({
+      where: { id: stallId, stallOwner: { userId: socket.data.userId } },
+      select: { id: true }
+    });
+    if (stall) socket.join(`stall-${stallId}`);
   });
   
   socket.on('disconnect', () => {

@@ -9,6 +9,9 @@ const router = express.Router();
 // Get dashboard stats
 router.get('/dashboard', authenticateToken, requireRole(['ADMIN']), async (req: AuthRequest, res) => {
   try {
+    const cached = getCache<any>('admin:dashboard');
+    if (cached) return res.json(cached);
+
     const [
       totalStalls,
       totalOrders,
@@ -16,7 +19,9 @@ router.get('/dashboard', authenticateToken, requireRole(['ADMIN']), async (req: 
       activeDeliveryPersons,
       totalRevenue,
       pendingOrders,
-      completedOrders
+      completedOrders,
+      recentOrders,
+      topStalls
     ] = await Promise.all([
       prisma.stall.count({ where: { isActive: true } }),
       prisma.order.count(),
@@ -27,46 +32,27 @@ router.get('/dashboard', authenticateToken, requireRole(['ADMIN']), async (req: 
         _sum: { amount: true }
       }),
       prisma.order.count({ where: { status: 'PENDING' } }),
-      prisma.order.count({ where: { status: 'DELIVERED' } })
+      prisma.order.count({ where: { status: 'DELIVERED' } }),
+      prisma.order.findMany({
+        take: 10,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          stall: { include: { stallOwner: true } },
+          deliveryPerson: true,
+          items: { include: { menuItem: true } }
+        }
+      }),
+      prisma.stall.findMany({
+        include: {
+          stallOwner: { select: { fullName: true } },
+          _count: { select: { orders: true } }
+        },
+        orderBy: { orders: { _count: 'desc' } },
+        take: 5
+      })
     ]);
 
-    // Get recent orders
-    const recentOrders = await prisma.order.findMany({
-      take: 10,
-      orderBy: { createdAt: 'desc' },
-      include: {
-        stall: {
-          include: {
-            stallOwner: true
-          }
-        },
-        deliveryPerson: true,
-        items: {
-          include: {
-            menuItem: true
-          }
-        }
-      }
-    });
-
-    // Get top performing stalls
-    const topStalls = await prisma.stall.findMany({
-      include: {
-        stallOwner: true,
-        orders: {
-          where: { status: 'DELIVERED' }
-        },
-        reviews: true
-      },
-      orderBy: {
-        orders: {
-          _count: 'desc'
-        }
-      },
-      take: 5
-    });
-
-    res.json({
+    const response = {
       stats: {
         totalStalls,
         totalOrders,
@@ -81,12 +67,13 @@ router.get('/dashboard', authenticateToken, requireRole(['ADMIN']), async (req: 
         id: stall.id,
         name: stall.name,
         owner: stall.stallOwner.fullName,
-        totalOrders: stall.orders.length,
-        averageRating: stall.reviews.length > 0 
-          ? stall.reviews.reduce((sum, review) => sum + review.rating, 0) / stall.reviews.length 
-          : 0
+        totalOrders: stall._count.orders,
+        averageRating: (stall as any).averageRating ?? 0
       }))
-    });
+    };
+
+    setCache('admin:dashboard', response, 30);
+    return res.json(response);
 
   } catch (error) {
     console.error('Get dashboard error:', error);
@@ -174,9 +161,7 @@ router.get('/stalls', authenticateToken, requireRole(['ADMIN']), async (req: Aut
         user: true,
         stall: {
           include: {
-            menuItems: true,
-            orders: true,
-            reviews: true
+            _count: { select: { menuItems: true, orders: true, reviews: true } }
           }
         }
       },
@@ -220,11 +205,7 @@ router.get('/delivery-persons', authenticateToken, requireRole(['ADMIN']), async
       where: whereClause,
       include: {
         user: true,
-        deliveries: {
-          include: {
-            order: true
-          }
-        }
+        _count: { select: { deliveries: true } }
       },
       orderBy: { createdAt: 'desc' },
       skip: (Number(page) - 1) * Number(limit),
@@ -462,11 +443,8 @@ router.get('/payment-config', authenticateToken, requireRole(['ADMIN']), async (
     const cached = getCache<any>('config:payment');
     if (cached) return res.json(cached);
 
-    const config = await prisma.paymentConfig.upsert({
-      where: { id: 'singleton' },
-      update: {},
-      create: { id: 'singleton', stkPushEnabled: false }
-    });
+    const config = await prisma.paymentConfig.findUnique({ where: { id: 'singleton' } })
+      ?? await prisma.paymentConfig.create({ data: { id: 'singleton', stkPushEnabled: false, deliveryFee: 50 } });
     const response = { config };
     setCache('config:payment', response, 300);
     res.json(response);
@@ -558,24 +536,27 @@ router.get('/settlements/stalls-summary', authenticateToken, requireRole(['ADMIN
 // Settlements: Delivery persons trips summary (count completed deliveries)
 router.get('/settlements/delivery-persons-summary', authenticateToken, requireRole(['ADMIN']), async (req: AuthRequest, res) => {
   try {
-    // Count delivered orders grouped by deliveryPersonId
-    const deliveredOrders = await prisma.order.findMany({
-      where: { status: 'DELIVERED', deliveryPersonId: { not: null } },
-      select: { deliveryPersonId: true }
-    });
+    const [grouped, people] = await Promise.all([
+      prisma.order.groupBy({
+        by: ['deliveryPersonId'],
+        where: { status: 'DELIVERED', deliveryPersonId: { not: null } },
+        _count: { id: true }
+      }),
+      prisma.deliveryPerson.findMany({ select: { id: true, fullName: true, phoneNumber: true } })
+    ]);
+
     const counts: Record<string, number> = {};
-    for (const o of deliveredOrders) {
-      const id = o.deliveryPersonId as string;
-      counts[id] = (counts[id] || 0) + 1;
-    }
-    const ids = Object.keys(counts);
-    const people = await prisma.deliveryPerson.findMany({ where: { id: { in: ids } }, include: { user: true } });
-    const result = people.map(p => ({
-      deliveryPersonId: p.id,
-      fullName: p.fullName,
-      phoneNumber: p.phoneNumber,
-      trips: counts[p.id] || 0
-    }));
+    for (const g of grouped) counts[g.deliveryPersonId as string] = g._count.id;
+
+    const result = people
+      .filter(p => counts[p.id] !== undefined)
+      .map(p => ({
+        deliveryPersonId: p.id,
+        fullName: p.fullName,
+        phoneNumber: p.phoneNumber,
+        trips: counts[p.id]
+      }));
+
     res.json({ deliveryPersons: result });
   } catch (error) {
     console.error('Get delivery persons trips summary error:', error);

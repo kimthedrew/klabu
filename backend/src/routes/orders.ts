@@ -42,11 +42,8 @@ router.get('/delivery-config', async (req, res) => {
     const cached = getCache<{ deliveryFee: number; deliveryFeeNote: string | null }>('config:delivery');
     if (cached) return res.json(cached);
 
-    const config = await prisma.paymentConfig.upsert({
-      where: { id: 'singleton' },
-      update: {},
-      create: { id: 'singleton', stkPushEnabled: false, deliveryFee: 50 }
-    });
+    const config = await prisma.paymentConfig.findUnique({ where: { id: 'singleton' } })
+      ?? await prisma.paymentConfig.create({ data: { id: 'singleton', stkPushEnabled: false, deliveryFee: 50 } });
 
     const response = { deliveryFee: config.deliveryFee, deliveryFeeNote: config.deliveryFeeNote ?? null };
     setCache('config:delivery', response, 60); // 1-minute cache so fee changes propagate quickly
