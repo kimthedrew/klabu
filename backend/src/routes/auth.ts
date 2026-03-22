@@ -271,7 +271,12 @@ router.post('/forgot-password', async (req, res) => {
       data: { resetToken: token, resetTokenExpiry: expiry }
     });
 
-    await sendPasswordResetEmail(email, token);
+    // Admin account has no real inbox — send reset link to the configured recovery email
+    const sendTo = user.role === 'ADMIN'
+      ? process.env.ADMIN_RECOVERY_EMAIL!
+      : email;
+
+    await sendPasswordResetEmail(sendTo, token);
     res.json({ message: 'If that email exists, a reset link has been sent' });
   } catch (error) {
     console.error('Forgot password error:', error);
