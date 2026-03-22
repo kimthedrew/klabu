@@ -4,7 +4,7 @@ import { prisma } from '../prismaClient';
 import { authenticateToken, requireRole, AuthRequest } from '../utils/auth';
 import { io } from '../index';
 import { DeliveryAssignmentService } from '../services/deliveryAssignmentService';
-import { getCache } from '../utils/cache';
+import { getCache, setCache, invalidateCache } from '../utils/cache';
 import { createNotification, notifyAdmins } from '../utils/notify';
 
 const router = express.Router();
@@ -34,6 +34,27 @@ const createOrderSchema = Joi.object({
 
 const confirmPaymentSchema = Joi.object({
   mpesaPayerName: Joi.string().min(2).required()
+});
+
+// Get current delivery fee config (public - shown on checkout before order is placed)
+router.get('/delivery-config', async (req, res) => {
+  try {
+    const cached = getCache<{ deliveryFee: number; deliveryFeeNote: string | null }>('config:delivery');
+    if (cached) return res.json(cached);
+
+    const config = await prisma.paymentConfig.upsert({
+      where: { id: 'singleton' },
+      update: {},
+      create: { id: 'singleton', stkPushEnabled: false, deliveryFee: 50 }
+    });
+
+    const response = { deliveryFee: config.deliveryFee, deliveryFeeNote: config.deliveryFeeNote ?? null };
+    setCache('config:delivery', response, 60); // 1-minute cache so fee changes propagate quickly
+    return res.json(response);
+  } catch (error) {
+    console.error('Get delivery config error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 // Create order (public - no authentication required)
@@ -95,8 +116,11 @@ router.post('/', async (req, res) => {
       });
     }
 
-    // Add delivery fee (you can make this configurable)
-    const deliveryFee = 50; // KES 50 delivery fee
+    // Fetch delivery fee from config (admin-controlled)
+    const deliveryConfig = getCache<{ deliveryFee: number; deliveryFeeNote: string | null }>('config:delivery');
+    const deliveryFee = deliveryConfig
+      ? deliveryConfig.deliveryFee
+      : (await prisma.paymentConfig.findUnique({ where: { id: 'singleton' } }))?.deliveryFee ?? 50;
     const finalTotal = totalAmount + deliveryFee;
 
     // Create order

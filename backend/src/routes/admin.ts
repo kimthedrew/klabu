@@ -476,6 +476,31 @@ router.get('/payment-config', authenticateToken, requireRole(['ADMIN']), async (
   }
 });
 
+// Update delivery fee and optional reason
+router.patch('/payment-config/delivery-fee', authenticateToken, requireRole(['ADMIN']), async (req: AuthRequest, res) => {
+  try {
+    const { deliveryFee, deliveryFeeNote } = req.body;
+    if (typeof deliveryFee !== 'number' || deliveryFee < 0) {
+      return res.status(400).json({ error: 'deliveryFee must be a non-negative number' });
+    }
+
+    const config = await prisma.paymentConfig.upsert({
+      where: { id: 'singleton' },
+      update: { deliveryFee, deliveryFeeNote: deliveryFeeNote || null },
+      create: { id: 'singleton', stkPushEnabled: false, deliveryFee, deliveryFeeNote: deliveryFeeNote || null }
+    });
+
+    invalidateCache('config:delivery');
+    res.json({
+      message: 'Delivery fee updated successfully',
+      config
+    });
+  } catch (error) {
+    console.error('Update delivery fee error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Toggle STK Push on/off
 router.patch('/payment-config/stk-push', authenticateToken, requireRole(['ADMIN']), async (req: AuthRequest, res) => {
   try {

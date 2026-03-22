@@ -289,8 +289,10 @@ model LedgerEntry {
 }
 
 model PaymentConfig {
-  id             String  @id @default("singleton")
-  stkPushEnabled Boolean @default(false)
+  id              String  @id @default("singleton")
+  stkPushEnabled  Boolean @default(false)
+  deliveryFee     Float   @default(50)
+  deliveryFeeNote String?
 
   @@map("payment_config")
 }
