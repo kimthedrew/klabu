@@ -16,6 +16,7 @@ import paymentRoutes from './routes/payments';
 import { startBackupScheduler } from './utils/backup';
 import { setSocketIO } from './utils/notify';
 import notificationRoutes from './routes/notifications';
+import setupRoutes from './routes/setup';
 import { verifyToken } from './utils/auth';
 import { prisma } from './prismaClient';
 
@@ -88,6 +89,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/setup', setupRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
