@@ -127,15 +127,16 @@ export default function Home() {
             <div className="flex justify-between items-center py-4">
               <div className="flex items-center">
                 <h1 className="text-2xl font-bold text-green-600">Klabu</h1>
-                <span className="ml-2 text-sm text-gray-500">UON Food Delivery</span>
+                <span className="ml-2 text-sm text-gray-500 hidden sm:inline">UON Food Delivery</span>
               </div>
-              <div className="flex space-x-4">
-                <Link href="/reviews" className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center">
-                  <Star size={16} className="mr-2" />
+              <div className="flex items-center gap-2">
+                <Link href="/reviews" className="bg-blue-600 text-white px-3 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center text-sm">
+                  <Star size={16} className="mr-1 sm:mr-2" />
                   Reviews
                 </Link>
-                <Link href="/app" className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors">
-                  For Stall Owners and Delivery Persons
+                <Link href="/app" className="bg-green-600 text-white px-3 py-2 rounded-lg hover:bg-green-700 transition-colors text-sm">
+                  <span className="sm:hidden">Stall Owners</span>
+                  <span className="hidden sm:inline">For Stall Owners and Delivery Persons</span>
                 </Link>
               </div>
             </div>
@@ -145,10 +146,10 @@ export default function Home() {
         {/* Hero Section */}
         <section className="bg-gradient-to-r from-green-600 to-green-700 text-white py-16">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-            <h2 className="text-4xl font-bold mb-4">
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-4">
               Food from Klabu, Delivered to Your Hostel
             </h2>
-            <p className="text-xl mb-8 text-green-100">
+            <p className="text-base sm:text-xl mb-8 text-green-100">
               Skip the walk to Klabu. Order from your favorite stalls and get it delivered right to your room.
               in case of any issues, please contact the admin on +254113690898.
             </p>
