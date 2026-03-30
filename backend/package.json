@@ -48,5 +48,8 @@
     "kenya"
   ],
   "author": "Your Name",
-  "license": "MIT"
+  "license": "MIT",
+  "prisma": {
+    "seed": "ts-node prisma/seed.ts"
+  }
 }
