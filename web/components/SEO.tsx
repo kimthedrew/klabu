@@ -31,7 +31,8 @@ export default function SEO({
     : `${SITE_NAME} — Food Delivery at UON`;
   const metaDescription = description || DEFAULT_DESCRIPTION;
   const canonicalUrl = `${BASE_URL}${canonical}`;
-  const ogImageUrl = ogImage || `${BASE_URL}/og-image.png`;
+  const ogImageUrl = ogImage ||
+    `${BASE_URL}/api/og?title=${encodeURIComponent(fullTitle)}&description=${encodeURIComponent(metaDescription)}`;
   const schemas = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
 
   return (
@@ -40,6 +41,7 @@ export default function SEO({
       <meta name="description" content={metaDescription} />
       <meta name="keywords" content={KEYWORDS} />
       <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <meta name="google-site-verification" content="5oh__3S883up8kyztybo4IPOvlJBq72Nl6K8fhA3lio" />
       <link rel="icon" href="/favicon.ico" />
       <link rel="canonical" href={canonicalUrl} />
       {noindex && <meta name="robots" content="noindex, nofollow" />}

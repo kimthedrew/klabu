@@ -1,22 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import SEO from '../../components/SEO';
-import { useRouter } from 'next/router';
-import {
-  ArrowLeft,
-  Star,
-  Phone,
-  MapPin,
-  Clock,
-  ShoppingCart,
-  Plus,
-  Minus,
-  Copy,
-  Check
-} from 'lucide-react';
+import { ArrowLeft, Star, Phone, ShoppingCart, Plus, Minus, Copy, Check } from 'lucide-react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { API_BASE_URL } from '../../lib/config';
+import { GetServerSideProps } from 'next';
 
 interface MenuItem {
   id: string;
@@ -52,12 +41,14 @@ interface CartItem {
   quantity: number;
 }
 
-export default function StallPage() {
-  const [stall, setStall] = useState<Stall | null>(null);
-  const [loading, setLoading] = useState(true);
+interface StallPageProps {
+  stall: Stall;
+  stkPushEnabled: boolean;
+}
+
+export default function StallPage({ stall, stkPushEnabled }: StallPageProps) {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [showOrderModal, setShowOrderModal] = useState(false);
-  const [stkPushEnabled, setStkPushEnabled] = useState(false);
   const [copiedTill, setCopiedTill] = useState(false);
   const [orderForm, setOrderForm] = useState({
     customerName: '',
@@ -67,37 +58,6 @@ export default function StallPage() {
     mpesaPayerName: '',
     paymentMethod: 'MANUAL'
   });
-  const router = useRouter();
-  const { id } = router.query;
-
-  useEffect(() => {
-    if (id) {
-      fetchStall();
-      fetchPaymentConfig();
-    }
-  }, [id]);
-
-  const fetchPaymentConfig = async () => {
-    try {
-      const response = await axios.get(`${API_BASE_URL}/payments/config`);
-      setStkPushEnabled(response.data.stkPushEnabled);
-    } catch (error) {
-      setStkPushEnabled(false);
-    }
-  };
-
-  const fetchStall = async () => {
-    try {
-      const response = await axios.get(`${API_BASE_URL}/stalls/${id}`);
-      setStall(response.data);
-    } catch (error) {
-      console.error('Error fetching stall:', error);
-      toast.error('Failed to load stall details');
-      router.push('/');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const addToCart = (menuItem: MenuItem) => {
     setCart(prev => {
@@ -199,24 +159,6 @@ export default function StallPage() {
     setTimeout(() => setCopiedTill(false), 2000);
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600"></div>
-      </div>
-    );
-  }
-
-  if (!stall) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-gray-900 mb-4">Stall not found</h1>
-          <Link href="/" className="btn-primary">Go back home</Link>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <>
@@ -622,3 +564,24 @@ export default function StallPage() {
     </>
   );
 }
+
+export const getServerSideProps: GetServerSideProps = async ({ params }) => {
+  const id = params?.id as string;
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+
+  try {
+    const [stallRes, configRes] = await Promise.all([
+      fetch(`${apiUrl}/api/stalls/${id}`),
+      fetch(`${apiUrl}/api/payments/config`),
+    ]);
+
+    if (!stallRes.ok) return { notFound: true };
+
+    const stall = await stallRes.json();
+    const config = configRes.ok ? await configRes.json() : { stkPushEnabled: false };
+
+    return { props: { stall, stkPushEnabled: config.stkPushEnabled ?? false } };
+  } catch {
+    return { notFound: true };
+  }
+};

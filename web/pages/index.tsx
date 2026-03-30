@@ -44,11 +44,8 @@ export default function Home() {
 
   const fetchStalls = async () => {
     try {
-      console.log('Fetching stalls from API...');
       const response = await axios.get(`${API_BASE_URL}/stalls`);
-      console.log('API Response:', response.data);
       setStalls(response.data.stalls);
-      console.log('Stalls set:', response.data.stalls);
     } catch (error) {
       toast.error('Failed to load stalls');
       console.error('Error fetching stalls:', error);
@@ -88,11 +85,6 @@ export default function Home() {
     
     return matchesStallName && matchesFood;
   });
-
-  console.log('All stalls:', stalls);
-  console.log('Filtered stalls:', filteredStalls);
-  console.log('Search term:', searchTerm);
-  console.log('Food search:', foodSearch);
 
   const jsonLd = [
     {
