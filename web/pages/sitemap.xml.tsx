@@ -23,7 +23,6 @@ export const getServerSideProps: GetServerSideProps = async ({ res }) => {
   const staticPages = [
     { loc: '/', changefreq: 'daily', priority: '1.0' },
     { loc: '/reviews', changefreq: 'weekly', priority: '0.7' },
-    { loc: '/app', changefreq: 'monthly', priority: '0.6' },
   ];
 
   const stallPages = stallIds.map((id) => ({
