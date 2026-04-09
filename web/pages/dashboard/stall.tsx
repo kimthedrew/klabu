@@ -471,8 +471,8 @@ export default function StallDashboard() {
                   <span className="ml-2 text-sm text-gray-500">Stall Dashboard</span>
                 </Link>
               </div>
-              <div className="flex items-center space-x-4">
-                <span className="text-sm text-gray-600">Welcome, {user?.profile?.fullName}</span>
+              <div className="flex items-center space-x-2 sm:space-x-4">
+                <span className="hidden sm:block text-sm text-gray-600 truncate max-w-[160px]">Welcome, {user?.profile?.fullName}</span>
                 <NotificationBell
                   token={typeof window !== 'undefined' ? localStorage.getItem('token') ?? '' : ''}
                   socket={socket}
@@ -482,7 +482,7 @@ export default function StallDashboard() {
                   className="flex items-center text-gray-600 hover:text-gray-900"
                 >
                   <LogOut size={20} className="mr-1" />
-                  Logout
+                  <span className="hidden sm:inline">Logout</span>
                 </button>
               </div>
             </div>
@@ -926,7 +926,7 @@ export default function StallDashboard() {
         {/* Order Details Modal */}
         {showOrderModal && selectedOrder && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="bg-white rounded-lg p-4 sm:p-6 w-full max-w-lg sm:max-w-2xl max-h-[90vh] overflow-y-auto">
               <h3 className="text-xl font-semibold text-gray-900 mb-6">Order Details</h3>
               
               {/* Customer Information */}

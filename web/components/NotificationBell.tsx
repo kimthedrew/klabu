@@ -102,7 +102,7 @@ export default function NotificationBell({ token, socket }: Props) {
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-xl border border-gray-100 z-50 overflow-hidden">
+        <div className="absolute right-0 mt-2 w-screen max-w-xs sm:w-80 bg-white rounded-xl shadow-xl border border-gray-100 z-50 overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b">
             <h3 className="font-semibold text-gray-800">Notifications</h3>
             {unreadCount > 0 && (
@@ -115,7 +115,7 @@ export default function NotificationBell({ token, socket }: Props) {
             )}
           </div>
 
-          <div className="max-h-96 overflow-y-auto divide-y divide-gray-50">
+          <div className="max-h-72 sm:max-h-96 overflow-y-auto divide-y divide-gray-50">
             {notifications.length === 0 ? (
               <p className="text-center text-gray-400 text-sm py-8">No notifications yet</p>
             ) : (

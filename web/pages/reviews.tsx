@@ -196,14 +196,12 @@ export default function ReviewsPage() {
         {/* Header */}
         <header className="bg-white shadow-sm border-b">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center py-4">
-              <div className="flex items-center">
-                <Link href="/" className="flex items-center text-gray-600 hover:text-gray-900 mr-4">
-                  <ArrowLeft size={20} className="mr-2" />
-                  Back to Home
-                </Link>
-                <h1 className="text-2xl font-bold text-green-600">Reviews & Ratings</h1>
-              </div>
+            <div className="flex items-center py-4 gap-3">
+              <Link href="/" className="flex items-center text-gray-600 hover:text-gray-900 flex-shrink-0">
+                <ArrowLeft size={20} className="mr-1" />
+                <span className="hidden sm:inline">Back</span>
+              </Link>
+              <h1 className="text-xl sm:text-2xl font-bold text-green-600">Reviews & Ratings</h1>
             </div>
           </div>
         </header>
@@ -225,40 +223,40 @@ export default function ReviewsPage() {
 
           {/* Tabs */}
           <div className="mb-8">
-            <div className="border-b border-gray-200">
-              <nav className="-mb-px flex space-x-8">
+            <div className="border-b border-gray-200 overflow-x-auto">
+              <nav className="-mb-px flex min-w-max space-x-4 sm:space-x-8">
                 <button
                   onClick={() => setActiveTab('stalls')}
-                  className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                  className={`py-2 px-1 border-b-2 font-medium text-sm whitespace-nowrap ${
                     activeTab === 'stalls'
                       ? 'border-green-500 text-green-600'
                       : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                   }`}
                 >
-                  <Store size={20} className="inline mr-2" />
+                  <Store size={16} className="inline mr-1" />
                   Stalls ({stalls.length})
                 </button>
                 <button
                   onClick={() => setActiveTab('delivery-persons')}
-                  className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                  className={`py-2 px-1 border-b-2 font-medium text-sm whitespace-nowrap ${
                     activeTab === 'delivery-persons'
                       ? 'border-green-500 text-green-600'
                       : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                   }`}
                 >
-                  <Truck size={20} className="inline mr-2" />
-                  Delivery Persons ({deliveryPersons.length})
+                  <Truck size={16} className="inline mr-1" />
+                  Delivery ({deliveryPersons.length})
                 </button>
                 <button
                   onClick={() => setActiveTab('all-reviews')}
-                  className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                  className={`py-2 px-1 border-b-2 font-medium text-sm whitespace-nowrap ${
                     activeTab === 'all-reviews'
                       ? 'border-green-500 text-green-600'
                       : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                   }`}
                 >
-                  <MessageSquare size={20} className="inline mr-2" />
-                  All Reviews ({reviews.length})
+                  <MessageSquare size={16} className="inline mr-1" />
+                  Reviews ({reviews.length})
                 </button>
               </nav>
             </div>

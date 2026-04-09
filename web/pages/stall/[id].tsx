@@ -207,21 +207,20 @@ export default function StallPage({ stall, stkPushEnabled }: StallPageProps) {
         {/* Header */}
         <header className="bg-white shadow-sm border-b">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center py-4">
-              <div className="flex items-center">
-                <Link href="/" className="flex items-center text-gray-600 hover:text-gray-900 mr-4">
-                  <ArrowLeft size={20} className="mr-2" />
-                  Back
+            <div className="flex justify-between items-center py-4 gap-2">
+              <div className="flex items-center min-w-0">
+                <Link href="/" className="flex items-center text-gray-600 hover:text-gray-900 mr-3 flex-shrink-0">
+                  <ArrowLeft size={20} />
                 </Link>
-                <h1 className="text-2xl font-bold text-green-600">Klabu</h1>
+                <h1 className="text-xl sm:text-2xl font-bold text-green-600 truncate">Klabu</h1>
               </div>
               <button
                 onClick={() => setShowOrderModal(true)}
-                className="btn-primary flex items-center relative"
+                className="btn-primary flex items-center relative flex-shrink-0"
                 disabled={cart.length === 0}
               >
-                <ShoppingCart size={20} className="mr-2" />
-                Order ({cart.length})
+                <ShoppingCart size={20} className="mr-1 sm:mr-2" />
+                <span className="hidden sm:inline">Order </span>({cart.length})
                 {cart.length > 0 && (
                   <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
                     {cart.reduce((sum, item) => sum + item.quantity, 0)}
