@@ -99,6 +99,10 @@ export default function AdminDashboard() {
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [stkPushEnabled, setStkPushEnabled] = useState(false);
   const [togglingStk, setTogglingStk] = useState(false);
+  const [currentDeliveryFee, setCurrentDeliveryFee] = useState<number>(50);
+  const [deliveryFeeForm, setDeliveryFeeForm] = useState({ deliveryFee: '', deliveryFeeNote: '' });
+  const [showDeliveryFeeSection, setShowDeliveryFeeSection] = useState(false);
+  const [updatingDeliveryFee, setUpdatingDeliveryFee] = useState(false);
   const [showPasswordSection, setShowPasswordSection] = useState(false);
   const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
   const [showCurrentPw, setShowCurrentPw] = useState(false);
@@ -134,8 +138,35 @@ export default function AdminDashboard() {
         headers: { Authorization: `Bearer ${token}` }
       });
       setStkPushEnabled(response.data.config.stkPushEnabled);
+      setCurrentDeliveryFee(response.data.config.deliveryFee ?? 50);
     } catch (error) {
       console.error('Error fetching payment config:', error);
+    }
+  };
+
+  const handleUpdateDeliveryFee = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const fee = Number(deliveryFeeForm.deliveryFee);
+    if (isNaN(fee) || fee < 0) {
+      toast.error('Please enter a valid delivery fee');
+      return;
+    }
+    setUpdatingDeliveryFee(true);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.patch(
+        `${API_BASE_URL}/admin/payment-config/delivery-fee`,
+        { deliveryFee: fee, deliveryFeeNote: deliveryFeeForm.deliveryFeeNote || undefined },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setCurrentDeliveryFee(response.data.config.deliveryFee);
+      toast.success('Delivery fee updated successfully');
+      setDeliveryFeeForm({ deliveryFee: '', deliveryFeeNote: '' });
+      setShowDeliveryFeeSection(false);
+    } catch (error) {
+      toast.error('Failed to update delivery fee');
+    } finally {
+      setUpdatingDeliveryFee(false);
     }
   };
 
@@ -598,6 +629,65 @@ export default function AdminDashboard() {
                   : <ToggleLeft size={24} className="text-gray-400" />}
                 <span>{togglingStk ? 'Updating...' : stkPushEnabled ? 'Enabled' : 'Disabled'}</span>
               </button>
+            </div>
+
+            <div className="mt-4 border border-gray-200 rounded-lg">
+              <button
+                className="w-full flex items-center justify-between p-4"
+                onClick={() => {
+                  setShowDeliveryFeeSection(prev => !prev);
+                  setDeliveryFeeForm({ deliveryFee: String(currentDeliveryFee), deliveryFeeNote: '' });
+                }}
+              >
+                <div>
+                  <h3 className="font-medium text-gray-900 text-left">Delivery Fee</h3>
+                  <p className="text-sm text-gray-500 mt-1">Current fee: KES {currentDeliveryFee}</p>
+                </div>
+                {showDeliveryFeeSection ? <ChevronUp size={20} className="text-gray-400" /> : <ChevronDown size={20} className="text-gray-400" />}
+              </button>
+
+              {showDeliveryFeeSection && (
+                <form onSubmit={handleUpdateDeliveryFee} className="px-4 pb-4 space-y-4 max-w-md">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">New Delivery Fee (KES)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      required
+                      value={deliveryFeeForm.deliveryFee}
+                      onChange={e => setDeliveryFeeForm(f => ({ ...f, deliveryFee: e.target.value }))}
+                      className="w-full px-4 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                      placeholder="e.g. 50"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Reason (optional)</label>
+                    <input
+                      type="text"
+                      value={deliveryFeeForm.deliveryFeeNote}
+                      onChange={e => setDeliveryFeeForm(f => ({ ...f, deliveryFeeNote: e.target.value }))}
+                      className="w-full px-4 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                      placeholder="e.g. Peak hours adjustment"
+                    />
+                  </div>
+                  <div className="flex gap-3 pt-1">
+                    <button
+                      type="submit"
+                      disabled={updatingDeliveryFee}
+                      className="px-5 py-2.5 bg-green-600 hover:bg-green-700 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {updatingDeliveryFee ? 'Saving...' : 'Update Fee'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setShowDeliveryFeeSection(false); setDeliveryFeeForm({ deliveryFee: '', deliveryFeeNote: '' }); }}
+                      className="px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium rounded-lg transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              )}
             </div>
           </div>
         </div>
