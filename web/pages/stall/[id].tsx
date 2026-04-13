@@ -6,6 +6,7 @@ import axios from 'axios';
 import toast from 'react-hot-toast';
 import { API_BASE_URL } from '../../lib/config';
 import { GetServerSideProps } from 'next';
+import Image from 'next/image';
 
 interface MenuItem {
   id: string;
@@ -237,9 +238,11 @@ export default function StallPage({ stall, stkPushEnabled }: StallPageProps) {
             <div className="flex flex-col md:flex-row gap-6">
               {stall.stallOwner.stallPhoto && (
                 <div className="md:w-1/3">
-                  <img
+                  <Image
                     src={stall.stallOwner.stallPhoto}
                     alt={stall.name}
+                    width={500}
+                    height={300}
                     className="w-full h-48 object-cover rounded-lg"
                   />
                 </div>
