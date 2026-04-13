@@ -297,7 +297,7 @@ export default function AdminStalls() {
                           }
                         </div>
                       )}
-                      {stallOwner.stall && (
+                      {stallOwner.stall?.menuItems && (
                         <p><strong>Menu Items:</strong> {stallOwner.stall.menuItems.length}</p>
                       )}
                   {/* Settlement summary for this stall owner */}
