@@ -26,6 +26,7 @@ interface Order {
   status: string;
   paymentStatus: string;
   paymentCode?: string;
+  mpesaPayerName?: string;
   createdAt: string;
   stall: {
     name: string;
@@ -322,8 +323,8 @@ export default function AdminOrders() {
                       ? 'bg-green-100 text-green-800' 
                       : 'bg-yellow-100 text-yellow-800'
                   }`}>{selectedOrder.paymentStatus}</span></p>
-                  {selectedOrder.paymentCode && (
-                    <p><strong>M-Pesa Code:</strong> {selectedOrder.paymentCode}</p>
+                  {selectedOrder.mpesaPayerName && (
+                    <p><strong>M-Pesa Payer Name:</strong> {selectedOrder.mpesaPayerName}</p>
                   )}
                 </div>
               </div>

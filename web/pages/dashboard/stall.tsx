@@ -97,7 +97,7 @@ export default function StallDashboard() {
   });
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [showOrderModal, setShowOrderModal] = useState(false);
-  const [confirmationCode, setConfirmationCode] = useState('');
+  const [mpesaPayerName, setMpesaPayerName] = useState('');
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
   const [socket, setSocket] = useState<any>(null);
@@ -315,21 +315,21 @@ export default function StallDashboard() {
   };
 
   const handleConfirmPayment = async () => {
-    if (!selectedOrder || !confirmationCode.trim()) {
-      toast.error('Please enter the M-Pesa confirmation code');
+    if (!selectedOrder || !mpesaPayerName.trim()) {
+      toast.error('Please enter the M-Pesa payer\'s full name');
       return;
     }
 
     try {
       const token = localStorage.getItem('token');
       const response = await axios.post(`${API_BASE_URL}/orders/${selectedOrder.id}/confirm-payment`, {
-        paymentCode: confirmationCode
+        mpesaPayerName: mpesaPayerName
       }, {
         headers: { Authorization: `Bearer ${token}` }
       });
       
       toast.success('Payment confirmed successfully! You can now start preparing the order.');
-      setConfirmationCode('');
+
       
       // Refresh order data without closing modal
       const updatedOrderResponse = await axios.get(`${API_BASE_URL}/orders/${selectedOrder.id}`, {
@@ -980,10 +980,10 @@ export default function StallDashboard() {
                   <div className="flex space-x-3">
                     <input
                       type="text"
-                      value={confirmationCode}
-                      onChange={(e) => setConfirmationCode(e.target.value)}
+                      value={mpesaPayerName}
+                      onChange={(e) => setMpesaPayerName(e.target.value)}
                       className="flex-1 input-field"
-                      placeholder="Enter M-Pesa confirmation code"
+                      placeholder="Enter M-Pesa payer's full name"
                     />
                     <button
                       onClick={handleConfirmPayment}
@@ -1097,7 +1097,7 @@ export default function StallDashboard() {
                   onClick={() => {
                     setShowOrderModal(false);
                     setSelectedOrder(null);
-                    setConfirmationCode('');
+                    setMpesaPayerName('');
                   }}
                   className="btn-secondary"
                 >

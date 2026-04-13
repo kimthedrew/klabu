@@ -44,9 +44,11 @@ interface CartItem {
 interface StallPageProps {
   stall: Stall;
   stkPushEnabled: boolean;
+  deliveryFee: number;
+  deliveryFeeNote?: string;
 }
 
-export default function StallPage({ stall, stkPushEnabled }: StallPageProps) {
+export default function StallPage({ stall, stkPushEnabled, deliveryFee, deliveryFeeNote }: StallPageProps) {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [copiedTill, setCopiedTill] = useState(false);
@@ -386,9 +388,9 @@ export default function StallPage({ stall, stkPushEnabled }: StallPageProps) {
                 <div className="mt-4 pt-4 border-t">
                   <div className="flex justify-between text-lg font-semibold">
                     <span>Total:</span>
-                    <span>KES {getTotalAmount() + 50}</span>
+                    <span>KES {getTotalAmount() + deliveryFee}</span>
                   </div>
-                  <p className="text-sm text-gray-600">(Includes KES 50 delivery fee)</p>
+                  <p className="text-sm text-gray-600">(Includes KES {deliveryFee} delivery fee{deliveryFeeNote ? ` - ${deliveryFeeNote}` : ''})</p>
                 </div>
               </div>
 
@@ -429,7 +431,7 @@ export default function StallPage({ stall, stkPushEnabled }: StallPageProps) {
 
                   {orderForm.paymentMethod === 'MANUAL' && (
                     <div className="mt-3 text-sm text-blue-700">
-                      <p className="font-medium mb-1">Pay KES {getTotalAmount() + 50} to:</p>
+                      <p className="font-medium mb-1">Pay KES {getTotalAmount() + deliveryFee} to:</p>
                       {stall.stallOwner.tillNumber ? (
                         <div className="flex items-center space-x-2">
                           <span><strong>M-Pesa Till:</strong> {stall.stallOwner.tillNumber}</span>
@@ -577,9 +579,16 @@ export const getServerSideProps: GetServerSideProps = async ({ params }) => {
     if (!stallRes.ok) return { notFound: true };
 
     const stall = await stallRes.json();
-    const config = configRes.ok ? await configRes.json() : { stkPushEnabled: false };
+    const config = configRes.ok ? await configRes.json() : { stkPushEnabled: false, deliveryFee: 50 };
 
-    return { props: { stall, stkPushEnabled: config.stkPushEnabled ?? false } };
+    return {
+      props: {
+        stall,
+        stkPushEnabled: config.stkPushEnabled ?? false,
+        deliveryFee: config.deliveryFee ?? 50,
+        deliveryFeeNote: config.deliveryFeeNote ?? null
+      }
+    };
   } catch {
     return { notFound: true };
   }
