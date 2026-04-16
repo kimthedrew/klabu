@@ -46,7 +46,7 @@ export default function TermsAccept() {
 
   return (
     <>
-      <SEO title="Terms & Conditions" description="Please accept the updated Terms & Conditions to continue." />
+      <SEO title="Terms & Conditions" description="Please accept the updated Terms & Conditions to continue." canonical="/terms-accept" />
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <div className="bg-white rounded-lg shadow-lg p-8 w-full max-w-2xl">
           <h1 className="text-2xl font-bold text-gray-900 mb-2">Updated Terms & Conditions</h1>
