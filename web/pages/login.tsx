@@ -30,6 +30,12 @@ export default function Login() {
       localStorage.setItem('user', JSON.stringify(response.data.user));
       toast.success('Login successful!');
 
+      // Redirect to T&C acceptance if not yet accepted (version bump)
+      if (response.data.termsAccepted === false && response.data.termsVersion) {
+        router.push(`/terms-accept?role=${response.data.user.role}&version=${response.data.termsVersion}`);
+        return;
+      }
+
       if (response.data.user.role === 'STALL_OWNER') {
         router.push('/dashboard/stall');
       } else if (response.data.user.role === 'DELIVERY_PERSON') {

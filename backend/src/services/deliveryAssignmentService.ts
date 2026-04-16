@@ -6,6 +6,53 @@ export class DeliveryAssignmentService {
   private static assignmentTimers = new Map<string, NodeJS.Timeout>();
 
   /**
+   * Get eligible delivery persons for a given tier (tier-aware).
+   * FAST: persons with zero active orders.
+   * SLOW: persons with fewer than 3 active SLOW-tier orders.
+   */
+  private static async getEligibleDeliveryPersons(
+    deliveryTier: string,
+    excludeIds: string[] = []
+  ): Promise<any[]> {
+    if (deliveryTier === 'FAST') {
+      return prisma.deliveryPerson.findMany({
+        where: {
+          isActive: true,
+          isApproved: true,
+          id: excludeIds.length > 0 ? { notIn: excludeIds } : undefined,
+          orders: {
+            none: {
+              deliveryStatus: { notIn: ['DELIVERED', 'CANCELLED'] }
+            }
+          }
+        },
+        orderBy: { rating: 'desc' }
+      });
+    } else {
+      // SLOW tier: fetch all eligible with their active slow order counts
+      const candidates = await prisma.deliveryPerson.findMany({
+        where: {
+          isActive: true,
+          isApproved: true,
+          id: excludeIds.length > 0 ? { notIn: excludeIds } : undefined
+        },
+        orderBy: { rating: 'desc' },
+        include: {
+          orders: {
+            where: {
+              deliveryTier: 'SLOW',
+              deliveryStatus: { notIn: ['DELIVERED', 'CANCELLED'] }
+            },
+            select: { id: true }
+          }
+        }
+      });
+      // Only those with fewer than 3 active SLOW orders
+      return candidates.filter(p => p.orders.length < 3);
+    }
+  }
+
+  /**
    * Start the delivery assignment process for an order
    */
   static async startAssignmentProcess(orderId: string): Promise<void> {
@@ -30,18 +77,12 @@ export class DeliveryAssignmentService {
         throw new Error('Order is not ready for delivery assignment');
       }
 
-      // Get available delivery persons
-      const availableDeliveryPersons = await prisma.deliveryPerson.findMany({
-        where: {
-          isActive: true,
-          isApproved: true
-        },
-        orderBy: {
-          rating: 'desc'
-        }
-      });
+      const deliveryTier = order.deliveryTier ?? 'FAST';
 
-      if (availableDeliveryPersons.length === 0) {
+      // Get eligible delivery persons based on tier rules
+      const eligibleDeliveryPersons = await this.getEligibleDeliveryPersons(deliveryTier);
+
+      if (eligibleDeliveryPersons.length === 0) {
         // Notify stall owner that no delivery persons are available
         io.to(`stall-${order.stallId}`).emit('no-delivery-persons-available', {
           orderId,
@@ -50,8 +91,8 @@ export class DeliveryAssignmentService {
         return;
       }
 
-      // Start assignment with first available delivery person
-      await this.assignToNextDeliveryPerson(orderId, availableDeliveryPersons, 0);
+      // Start assignment with first eligible delivery person
+      await this.assignToNextDeliveryPerson(orderId, eligibleDeliveryPersons, 0, deliveryTier);
     } catch (error) {
       console.error('Error starting delivery assignment:', error);
       throw error;
@@ -62,9 +103,10 @@ export class DeliveryAssignmentService {
    * Assign order to a specific delivery person
    */
   private static async assignToNextDeliveryPerson(
-    orderId: string, 
-    availableDeliveryPersons: any[], 
-    index: number
+    orderId: string,
+    availableDeliveryPersons: any[],
+    index: number,
+    deliveryTier: string = 'FAST'
   ): Promise<void> {
     if (index >= availableDeliveryPersons.length) {
       // No more delivery persons available
@@ -117,6 +159,7 @@ export class DeliveryAssignmentService {
         roomNumber: assignment.order.roomNumber,
         totalAmount: assignment.order.totalAmount,
         deliveryFee: assignment.order.deliveryFee,
+        deliveryTier: assignment.order.deliveryTier ?? deliveryTier,
         stallName: assignment.order.stall.name,
         expiresAt: expiresAt.toISOString()
       });
@@ -131,7 +174,7 @@ export class DeliveryAssignmentService {
 
       // Set timer to move to next delivery person if no response
       const timer = setTimeout(async () => {
-        await this.handleAssignmentTimeout(assignment.id, orderId, availableDeliveryPersons, index + 1);
+        await this.handleAssignmentTimeout(assignment.id, orderId, availableDeliveryPersons, index + 1, deliveryTier);
       }, 90000); // 90 seconds
 
       this.assignmentTimers.set(assignment.id, timer);
@@ -151,13 +194,14 @@ export class DeliveryAssignmentService {
     assignmentId: string,
     orderId: string,
     availableDeliveryPersons: any[],
-    nextIndex: number
+    nextIndex: number,
+    deliveryTier: string = 'FAST'
   ): Promise<void> {
     try {
       // Update assignment status to expired
       await prisma.deliveryAssignment.update({
         where: { id: assignmentId },
-        data: { 
+        data: {
           status: 'EXPIRED',
           respondedAt: new Date()
         }
@@ -171,7 +215,7 @@ export class DeliveryAssignmentService {
       }
 
       // Move to next delivery person
-      await this.assignToNextDeliveryPerson(orderId, availableDeliveryPersons, nextIndex);
+      await this.assignToNextDeliveryPerson(orderId, availableDeliveryPersons, nextIndex, deliveryTier);
 
       console.log(`Assignment ${assignmentId} expired, moving to next delivery person`);
     } catch (error) {
@@ -314,20 +358,12 @@ export class DeliveryAssignmentService {
         this.assignmentTimers.delete(assignmentId);
       }
 
-      // Get available delivery persons for next assignment
-      const availableDeliveryPersons = await prisma.deliveryPerson.findMany({
-        where: {
-          isActive: true,
-          isApproved: true,
-          id: { not: deliveryPersonId } // Exclude the one who rejected
-        },
-        orderBy: {
-          rating: 'desc'
-        }
-      });
+      // Get eligible delivery persons for next assignment (tier-aware, excluding rejecter)
+      const orderTier = assignment.order.deliveryTier ?? 'FAST';
+      const eligibleDeliveryPersons = await this.getEligibleDeliveryPersons(orderTier, [deliveryPersonId]);
 
       // Move to next delivery person
-      await this.assignToNextDeliveryPerson(assignment.orderId, availableDeliveryPersons, 0);
+      await this.assignToNextDeliveryPerson(assignment.orderId, eligibleDeliveryPersons, 0, orderTier);
 
       console.log(`Assignment ${assignmentId} rejected by delivery person ${deliveryPersonId}`);
     } catch (error) {
@@ -407,20 +443,12 @@ export class DeliveryAssignmentService {
         where: { orderId }
       });
 
-      // Get available delivery persons (excluding the rejected one)
-      const availableDeliveryPersons = await prisma.deliveryPerson.findMany({
-        where: {
-          isActive: true,
-          isApproved: true,
-          id: { not: acceptedAssignment.deliveryPersonId }
-        },
-        orderBy: {
-          rating: 'desc'
-        }
-      });
+      // Get eligible delivery persons (tier-aware, excluding the rejected one)
+      const orderTier = order.deliveryTier ?? 'FAST';
+      const eligibleDeliveryPersons = await this.getEligibleDeliveryPersons(orderTier, [acceptedAssignment.deliveryPersonId]);
 
       // Start new assignment process
-      await this.assignToNextDeliveryPerson(orderId, availableDeliveryPersons, 0);
+      await this.assignToNextDeliveryPerson(orderId, eligibleDeliveryPersons, 0, orderTier);
 
       console.log(`Stall owner rejected delivery person for order ${orderId}`);
     } catch (error) {

@@ -44,14 +44,18 @@ interface CartItem {
 interface StallPageProps {
   stall: Stall;
   stkPushEnabled: boolean;
-  deliveryFee: number;
-  deliveryFeeNote?: string;
+  fastDeliveryFee: number;
+  slowDeliveryFee: number;
+  deliveryFeeNote: string | null;
 }
 
-export default function StallPage({ stall, stkPushEnabled, deliveryFee, deliveryFeeNote }: StallPageProps) {
+export default function StallPage({ stall, stkPushEnabled, fastDeliveryFee, slowDeliveryFee, deliveryFeeNote }: StallPageProps) {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [copiedTill, setCopiedTill] = useState(false);
+  const [deliveryTier, setDeliveryTier] = useState<'FAST' | 'SLOW'>('FAST');
+  const [buyerTermsAccepted, setBuyerTermsAccepted] = useState(false);
+  const [showBuyerTerms, setShowBuyerTerms] = useState(false);
   const [orderForm, setOrderForm] = useState({
     customerName: '',
     customerPhone: '',
@@ -99,6 +103,10 @@ export default function StallPage({ stall, stkPushEnabled, deliveryFee, delivery
     return cart.reduce((total, item) => total + (item.menuItem.price * item.quantity), 0);
   };
 
+  const getDeliveryFee = () => deliveryTier === 'FAST' ? fastDeliveryFee : slowDeliveryFee;
+
+  const getOrderTotal = () => getTotalAmount() + getDeliveryFee();
+
   const handleOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -116,6 +124,7 @@ export default function StallPage({ stall, stkPushEnabled, deliveryFee, delivery
         roomNumber: orderForm.roomNumber,
         mpesaPayerName: orderForm.mpesaPayerName,
         paymentMethod: orderForm.paymentMethod,
+        deliveryTier,
         items: cart.map(item => ({
           menuItemId: item.menuItem.id,
           quantity: item.quantity
@@ -135,7 +144,7 @@ export default function StallPage({ stall, stkPushEnabled, deliveryFee, delivery
           toast.success('Payment request sent to your phone! Please check your phone and enter your M-Pesa PIN to complete the payment.');
           
           // Show payment status
-          alert(`Order ID: ${response.data.order.id}\nTotal: KES ${response.data.order.totalAmount + 50}\n\n${stkResponse.data.customerMessage}\n\nPlease complete the payment on your phone to confirm your order.`);
+          alert(`Order ID: ${response.data.order.id}\nTotal: KES ${response.data.order.totalAmount + response.data.order.deliveryFee}\n\n${stkResponse.data.customerMessage}\n\nPlease complete the payment on your phone to confirm your order.`);
           
         } catch (stkError: any) {
           toast.error(stkError.response?.data?.error || 'Failed to initiate payment');
@@ -143,11 +152,13 @@ export default function StallPage({ stall, stkPushEnabled, deliveryFee, delivery
         }
       } else {
         toast.success('Order placed successfully!');
-        alert(`Order ID: ${response.data.order.id}\nTotal: KES ${response.data.order.totalAmount + 50}\n\nYour order has been placed! The stall owner will verify your payment and confirm the order. You'll be notified when your order is confirmed and on its way.`);
+        alert(`Order ID: ${response.data.order.id}\nTotal: KES ${response.data.order.totalAmount + response.data.order.deliveryFee}\n\nYour order has been placed! The stall owner will verify your payment and confirm the order. You'll be notified when your order is confirmed and on its way.`);
       }
 
       setCart([]);
       setShowOrderModal(false);
+      setDeliveryTier('FAST');
+      setBuyerTermsAccepted(false);
       setOrderForm({ customerName: '', customerPhone: '', deliveryLocation: '', roomNumber: '', mpesaPayerName: '', paymentMethod: 'MANUAL' });
       
     } catch (error: any) {
@@ -388,9 +399,47 @@ export default function StallPage({ stall, stkPushEnabled, deliveryFee, delivery
                 <div className="mt-4 pt-4 border-t">
                   <div className="flex justify-between text-lg font-semibold">
                     <span>Total:</span>
-                    <span>KES {getTotalAmount() + deliveryFee}</span>
+                    <span>KES {getOrderTotal()}</span>
                   </div>
-                  <p className="text-sm text-gray-600">(Includes KES {deliveryFee} delivery fee{deliveryFeeNote ? ` - ${deliveryFeeNote}` : ''})</p>
+                  <p className="text-sm text-gray-600">
+                    (Includes KES {getDeliveryFee()} {deliveryTier === 'FAST' ? 'fast' : 'standard'} delivery fee
+                    {deliveryFeeNote ? ` — ${deliveryFeeNote}` : ''})
+                  </p>
+                </div>
+              </div>
+
+              {/* Delivery Speed Selection */}
+              <div className="mb-6">
+                <h4 className="font-medium text-gray-900 mb-3">Delivery Speed</h4>
+                <div className="space-y-2">
+                  <label className={`flex items-start space-x-3 p-3 border-2 rounded-lg cursor-pointer transition-colors ${deliveryTier === 'FAST' ? 'border-green-500 bg-green-50' : 'border-gray-200 hover:border-gray-300'}`}>
+                    <input
+                      type="radio"
+                      name="deliveryTier"
+                      value="FAST"
+                      checked={deliveryTier === 'FAST'}
+                      onChange={() => setDeliveryTier('FAST')}
+                      className="mt-0.5"
+                    />
+                    <div>
+                      <p className="font-medium text-gray-900">Fast Delivery — KES {fastDeliveryFee}</p>
+                      <p className="text-sm text-gray-500">Dedicated delivery person, delivered ASAP</p>
+                    </div>
+                  </label>
+                  <label className={`flex items-start space-x-3 p-3 border-2 rounded-lg cursor-pointer transition-colors ${deliveryTier === 'SLOW' ? 'border-green-500 bg-green-50' : 'border-gray-200 hover:border-gray-300'}`}>
+                    <input
+                      type="radio"
+                      name="deliveryTier"
+                      value="SLOW"
+                      checked={deliveryTier === 'SLOW'}
+                      onChange={() => setDeliveryTier('SLOW')}
+                      className="mt-0.5"
+                    />
+                    <div>
+                      <p className="font-medium text-gray-900">Standard Delivery — KES {slowDeliveryFee}</p>
+                      <p className="text-sm text-gray-500">Shared delivery person, may take a little longer</p>
+                    </div>
+                  </label>
                 </div>
               </div>
 
@@ -431,7 +480,7 @@ export default function StallPage({ stall, stkPushEnabled, deliveryFee, delivery
 
                   {orderForm.paymentMethod === 'MANUAL' && (
                     <div className="mt-3 text-sm text-blue-700">
-                      <p className="font-medium mb-1">Pay KES {getTotalAmount() + deliveryFee} to:</p>
+                      <p className="font-medium mb-1">Pay KES {getOrderTotal()} to:</p>
                       {stall.stallOwner.tillNumber ? (
                         <div className="flex items-center space-x-2">
                           <span><strong>M-Pesa Till:</strong> {stall.stallOwner.tillNumber}</span>
@@ -542,6 +591,29 @@ export default function StallPage({ stall, stkPushEnabled, deliveryFee, delivery
                   </div>
                 )}
                 
+                {/* Buyer T&C */}
+                <div className="pt-2">
+                  <label className="flex items-start space-x-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      required
+                      checked={buyerTermsAccepted}
+                      onChange={(e) => setBuyerTermsAccepted(e.target.checked)}
+                      className="mt-0.5"
+                    />
+                    <span className="text-sm text-gray-600">
+                      I agree to the{' '}
+                      <button
+                        type="button"
+                        onClick={() => setShowBuyerTerms(true)}
+                        className="text-green-600 underline hover:text-green-700"
+                      >
+                        Buyer Terms & Conditions
+                      </button>
+                    </span>
+                  </label>
+                </div>
+
                 <div className="flex space-x-3 pt-4">
                   <button
                     type="button"
@@ -552,12 +624,42 @@ export default function StallPage({ stall, stkPushEnabled, deliveryFee, delivery
                   </button>
                   <button
                     type="submit"
-                    className="flex-1 btn-primary"
+                    disabled={!buyerTermsAccepted}
+                    className="flex-1 btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Place Order
                   </button>
                 </div>
               </form>
+
+              {/* Buyer T&C Modal */}
+              {showBuyerTerms && (
+                <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-60">
+                  <div className="bg-white rounded-lg p-6 w-full max-w-lg max-h-[80vh] overflow-y-auto">
+                    <h3 className="text-lg font-semibold mb-4">Buyer Terms & Conditions</h3>
+                    <div className="text-sm text-gray-700 space-y-3">
+                      <p><strong>1. Order Placement.</strong> By placing an order you confirm that the details you provide (name, phone, delivery location) are accurate.</p>
+                      <p><strong>2. Payment.</strong> Payment must be completed as instructed. Orders not paid within a reasonable time may be cancelled by the stall owner.</p>
+                      <p><strong>3. Delivery.</strong> Delivery fees are non-refundable once a delivery person has been assigned. Delivery times are estimates and may vary.</p>
+                      <p><strong>4. Refunds.</strong> Refund requests must be made directly to the stall owner. Klabu is not liable for order quality disputes.</p>
+                      <p><strong>5. Privacy.</strong> Your contact details are shared with the stall owner and the assigned delivery person solely for order fulfillment.</p>
+                      <p><strong>6. Conduct.</strong> You agree to treat delivery persons and stall staff with respect.</p>
+                    </div>
+                    <button
+                      onClick={() => { setBuyerTermsAccepted(true); setShowBuyerTerms(false); }}
+                      className="mt-6 w-full btn-primary"
+                    >
+                      I Accept
+                    </button>
+                    <button
+                      onClick={() => setShowBuyerTerms(false)}
+                      className="mt-2 w-full btn-secondary"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -571,22 +673,25 @@ export const getServerSideProps: GetServerSideProps = async ({ params }) => {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
   try {
-    const [stallRes, configRes] = await Promise.all([
+    const [stallRes, configRes, deliveryConfigRes] = await Promise.all([
       fetch(`${apiUrl}/api/stalls/${id}`),
       fetch(`${apiUrl}/api/payments/config`),
+      fetch(`${apiUrl}/api/orders/delivery-config`),
     ]);
 
     if (!stallRes.ok) return { notFound: true };
 
     const stall = await stallRes.json();
-    const config = configRes.ok ? await configRes.json() : { stkPushEnabled: false, deliveryFee: 50 };
+    const config = configRes.ok ? await configRes.json() : { stkPushEnabled: false };
+    const deliveryConfig = deliveryConfigRes.ok ? await deliveryConfigRes.json() : { fastDeliveryFee: 50, slowDeliveryFee: 30, deliveryFeeNote: null };
 
     return {
       props: {
         stall,
         stkPushEnabled: config.stkPushEnabled ?? false,
-        deliveryFee: config.deliveryFee ?? 50,
-        deliveryFeeNote: config.deliveryFeeNote ?? null
+        fastDeliveryFee: deliveryConfig.fastDeliveryFee ?? 50,
+        slowDeliveryFee: deliveryConfig.slowDeliveryFee ?? 30,
+        deliveryFeeNote: deliveryConfig.deliveryFeeNote ?? null,
       }
     };
   } catch {

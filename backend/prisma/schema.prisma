@@ -28,6 +28,7 @@ model User {
   deliveryPerson        DeliveryPerson?
   notifications         Notification[]
   passwordResetRequests PasswordResetRequest[]
+  termsAcceptances      TermsAcceptance[]
 
   @@map("users")
 }
@@ -140,6 +141,9 @@ model Order {
   // Order details
   totalAmount    Float
   deliveryFee    Float
+  deliveryTier   String @default("FAST")  // "FAST" | "SLOW"
+  platformCut    Float  @default(0)
+  deliveryPersonEarnings Float @default(0)
   status         String @default("PENDING")
   mpesaPayerName String?     // M-Pesa paying name entered by customer
   paymentStatus  String @default("PENDING")
@@ -291,10 +295,13 @@ model LedgerEntry {
 }
 
 model PaymentConfig {
-  id              String  @id @default("singleton")
-  stkPushEnabled  Boolean @default(false)
-  deliveryFee     Float   @default(50)
-  deliveryFeeNote String?
+  id               String  @id @default("singleton")
+  stkPushEnabled   Boolean @default(false)
+  deliveryFee      Float   @default(50)   // legacy; kept in sync with fastDeliveryFee
+  fastDeliveryFee  Float   @default(50)   // FAST tier: one order at a time
+  slowDeliveryFee  Float   @default(30)   // SLOW tier: up to 3 simultaneous
+  commissionRate   Float   @default(0.33) // platform cut (0.0–1.0)
+  deliveryFeeNote  String?
 
   @@map("payment_config")
 }
@@ -328,6 +335,19 @@ model PasswordResetRequest {
 
   @@index([status])
   @@map("password_reset_requests")
+}
+
+model TermsAcceptance {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role       String   // "BUYER" | "STALL_OWNER" | "DELIVERY_PERSON"
+  version    String   // e.g. "2026-04-16" — bump to force re-acceptance
+  acceptedAt DateTime @default(now())
+  ipAddress  String?
+
+  @@unique([userId, role, version])
+  @@map("terms_acceptances")
 }
 
 // Note: Using String types for status/role fields (no enums) for simplicity

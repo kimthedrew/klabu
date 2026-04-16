@@ -444,7 +444,7 @@ router.get('/payment-config', authenticateToken, requireRole(['ADMIN']), async (
     if (cached) return res.json(cached);
 
     const config = await prisma.paymentConfig.findUnique({ where: { id: 'singleton' } })
-      ?? await prisma.paymentConfig.create({ data: { id: 'singleton', stkPushEnabled: false, deliveryFee: 50 } });
+      ?? await prisma.paymentConfig.create({ data: { id: 'singleton', stkPushEnabled: false, deliveryFee: 50, fastDeliveryFee: 50, slowDeliveryFee: 30, commissionRate: 0.33 } });
     const response = { config };
     setCache('config:payment', response, 300);
     res.json(response);
@@ -454,25 +454,47 @@ router.get('/payment-config', authenticateToken, requireRole(['ADMIN']), async (
   }
 });
 
-// Update delivery fee and optional reason
+// Update delivery fees, commission rate and optional note
 router.patch('/payment-config/delivery-fee', authenticateToken, requireRole(['ADMIN']), async (req: AuthRequest, res) => {
   try {
-    const { deliveryFee, deliveryFeeNote } = req.body;
-    if (typeof deliveryFee !== 'number' || deliveryFee < 0) {
-      return res.status(400).json({ error: 'deliveryFee must be a non-negative number' });
+    const { fastDeliveryFee, slowDeliveryFee, commissionRate, deliveryFeeNote } = req.body;
+
+    if (fastDeliveryFee !== undefined && (typeof fastDeliveryFee !== 'number' || fastDeliveryFee < 0)) {
+      return res.status(400).json({ error: 'fastDeliveryFee must be a non-negative number' });
     }
+    if (slowDeliveryFee !== undefined && (typeof slowDeliveryFee !== 'number' || slowDeliveryFee < 0)) {
+      return res.status(400).json({ error: 'slowDeliveryFee must be a non-negative number' });
+    }
+    if (commissionRate !== undefined && (typeof commissionRate !== 'number' || commissionRate < 0 || commissionRate > 1)) {
+      return res.status(400).json({ error: 'commissionRate must be a number between 0 and 1' });
+    }
+
+    const updateData: any = {};
+    if (fastDeliveryFee !== undefined) {
+      updateData.fastDeliveryFee = fastDeliveryFee;
+      updateData.deliveryFee = fastDeliveryFee; // keep legacy field in sync
+    }
+    if (slowDeliveryFee !== undefined) updateData.slowDeliveryFee = slowDeliveryFee;
+    if (commissionRate !== undefined) updateData.commissionRate = commissionRate;
+    if (deliveryFeeNote !== undefined) updateData.deliveryFeeNote = deliveryFeeNote || null;
 
     const config = await prisma.paymentConfig.upsert({
       where: { id: 'singleton' },
-      update: { deliveryFee, deliveryFeeNote: deliveryFeeNote || null },
-      create: { id: 'singleton', stkPushEnabled: false, deliveryFee, deliveryFeeNote: deliveryFeeNote || null }
+      update: updateData,
+      create: {
+        id: 'singleton',
+        stkPushEnabled: false,
+        fastDeliveryFee: fastDeliveryFee ?? 50,
+        slowDeliveryFee: slowDeliveryFee ?? 30,
+        deliveryFee: fastDeliveryFee ?? 50,
+        commissionRate: commissionRate ?? 0.33,
+        deliveryFeeNote: deliveryFeeNote || null
+      }
     });
 
     invalidateCache('config:delivery');
-    res.json({
-      message: 'Delivery fee updated successfully',
-      config
-    });
+    invalidateCache('config:payment');
+    res.json({ message: 'Delivery settings updated successfully', config });
   } catch (error) {
     console.error('Update delivery fee error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -533,14 +555,19 @@ router.get('/settlements/stalls-summary', authenticateToken, requireRole(['ADMIN
   }
 });
 
-// Settlements: Delivery persons trips summary (count completed deliveries)
+// Settlements: Delivery persons trips summary (count completed deliveries + earnings)
 router.get('/settlements/delivery-persons-summary', authenticateToken, requireRole(['ADMIN']), async (req: AuthRequest, res) => {
   try {
-    const [grouped, people] = await Promise.all([
+    const [grouped, earningsAgg, people] = await Promise.all([
       prisma.order.groupBy({
         by: ['deliveryPersonId'],
         where: { status: 'DELIVERED', deliveryPersonId: { not: null } },
         _count: { id: true }
+      }),
+      prisma.order.groupBy({
+        by: ['deliveryPersonId'],
+        where: { status: 'DELIVERED', deliveryPersonId: { not: null } },
+        _sum: { deliveryPersonEarnings: true }
       }),
       prisma.deliveryPerson.findMany({ select: { id: true, fullName: true, phoneNumber: true } })
     ]);
@@ -548,13 +575,17 @@ router.get('/settlements/delivery-persons-summary', authenticateToken, requireRo
     const counts: Record<string, number> = {};
     for (const g of grouped) counts[g.deliveryPersonId as string] = g._count.id;
 
+    const earnings: Record<string, number> = {};
+    for (const g of earningsAgg) earnings[g.deliveryPersonId as string] = g._sum.deliveryPersonEarnings ?? 0;
+
     const result = people
       .filter(p => counts[p.id] !== undefined)
       .map(p => ({
         deliveryPersonId: p.id,
         fullName: p.fullName,
         phoneNumber: p.phoneNumber,
-        trips: counts[p.id]
+        trips: counts[p.id],
+        totalEarnings: earnings[p.id] ?? 0
       }));
 
     res.json({ deliveryPersons: result });

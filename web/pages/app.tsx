@@ -4,6 +4,7 @@ import SEO from '../components/SEO';
 import { Store, Truck, User, LogIn, UserPlus } from 'lucide-react';
 import axios from 'axios';
 import { API_BASE_URL } from '../lib/config';
+import { TERMS_VERSIONS, STALL_OWNER_TERMS, DELIVERY_PERSON_TERMS } from '../lib/terms';
 
 export default function App() {
   const [userType, setUserType] = useState<'stall' | 'delivery' | null>(null);
@@ -137,6 +138,8 @@ function StallOwnerRegistration({ onBack }: { onBack: () => void }) {
     tillNumber: ''
   });
   const [loading, setLoading] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [showTerms, setShowTerms] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -144,15 +147,21 @@ function StallOwnerRegistration({ onBack }: { onBack: () => void }) {
       alert('Passwords do not match');
       return;
     }
-    
+    if (!termsAccepted) {
+      alert('Please accept the Terms & Conditions to continue.');
+      return;
+    }
+
     setLoading(true);
     try {
       const { confirmPassword, ...registrationData } = formData;
-      const response = await axios.post(`${API_BASE_URL}/auth/register`, {
+      await axios.post(`${API_BASE_URL}/auth/register`, {
         ...registrationData,
-        role: 'STALL_OWNER'
+        role: 'STALL_OWNER',
+        termsAccepted: true,
+        termsVersion: TERMS_VERSIONS.STALL_OWNER
       });
-      
+
       alert('Registration successful! Your account needs admin approval before you can start operating. You will be notified once approved. Please login to check your status.');
       window.location.href = '/login';
     } catch (error: any) {
@@ -312,6 +321,24 @@ function StallOwnerRegistration({ onBack }: { onBack: () => void }) {
             </div>
           </div>
 
+          {/* T&C */}
+          <div>
+            <label className="flex items-start space-x-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={termsAccepted}
+                onChange={(e) => setTermsAccepted(e.target.checked)}
+                className="mt-0.5"
+              />
+              <span className="text-sm text-gray-600">
+                I agree to the{' '}
+                <button type="button" onClick={() => setShowTerms(true)} className="text-green-600 underline hover:text-green-700">
+                  Stall Owner Terms & Conditions
+                </button>
+              </span>
+            </label>
+          </div>
+
           <div className="flex space-x-4">
             <button
               type="button"
@@ -322,7 +349,7 @@ function StallOwnerRegistration({ onBack }: { onBack: () => void }) {
             </button>
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || !termsAccepted}
               className="flex-1 bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 transition-colors font-medium disabled:opacity-50"
             >
               {loading ? 'Creating Account...' : 'Create Account'}
@@ -330,6 +357,18 @@ function StallOwnerRegistration({ onBack }: { onBack: () => void }) {
           </div>
         </form>
       </div>
+
+      {/* T&C Modal */}
+      {showTerms && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-lg max-h-[80vh] overflow-y-auto">
+            <h3 className="text-lg font-semibold mb-4">Stall Owner Terms & Conditions</h3>
+            <pre className="text-sm text-gray-700 whitespace-pre-wrap font-sans">{STALL_OWNER_TERMS}</pre>
+            <button onClick={() => { setTermsAccepted(true); setShowTerms(false); }} className="mt-6 w-full bg-green-600 text-white py-2 rounded-lg hover:bg-green-700">I Accept</button>
+            <button onClick={() => setShowTerms(false)} className="mt-2 w-full border border-gray-300 py-2 rounded-lg hover:bg-gray-50">Close</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -344,6 +383,8 @@ function DeliveryPersonRegistration({ onBack }: { onBack: () => void }) {
     idNumber: ''
   });
   const [loading, setLoading] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [showTerms, setShowTerms] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -351,15 +392,21 @@ function DeliveryPersonRegistration({ onBack }: { onBack: () => void }) {
       alert('Passwords do not match');
       return;
     }
-    
+    if (!termsAccepted) {
+      alert('Please accept the Terms & Conditions to continue.');
+      return;
+    }
+
     setLoading(true);
     try {
       const { confirmPassword, ...registrationData } = formData;
-      const response = await axios.post(`${API_BASE_URL}/auth/register`, {
+      await axios.post(`${API_BASE_URL}/auth/register`, {
         ...registrationData,
-        role: 'DELIVERY_PERSON'
+        role: 'DELIVERY_PERSON',
+        termsAccepted: true,
+        termsVersion: TERMS_VERSIONS.DELIVERY_PERSON
       });
-      
+
       alert('Registration successful! Your account needs admin approval before you can start accepting deliveries. You will be notified once approved. Please login to check your status.');
       window.location.href = '/login';
     } catch (error: any) {
@@ -464,6 +511,24 @@ function DeliveryPersonRegistration({ onBack }: { onBack: () => void }) {
             </div>
           </div>
 
+          {/* T&C */}
+          <div>
+            <label className="flex items-start space-x-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={termsAccepted}
+                onChange={(e) => setTermsAccepted(e.target.checked)}
+                className="mt-0.5"
+              />
+              <span className="text-sm text-gray-600">
+                I agree to the{' '}
+                <button type="button" onClick={() => setShowTerms(true)} className="text-blue-600 underline hover:text-blue-700">
+                  Delivery Person Terms & Conditions
+                </button>
+              </span>
+            </label>
+          </div>
+
           <div className="flex space-x-4">
             <button
               type="button"
@@ -474,7 +539,7 @@ function DeliveryPersonRegistration({ onBack }: { onBack: () => void }) {
             </button>
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || !termsAccepted}
               className="flex-1 bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50"
             >
               {loading ? 'Creating Account...' : 'Create Account'}
@@ -482,6 +547,18 @@ function DeliveryPersonRegistration({ onBack }: { onBack: () => void }) {
           </div>
         </form>
       </div>
+
+      {/* T&C Modal */}
+      {showTerms && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-lg max-h-[80vh] overflow-y-auto">
+            <h3 className="text-lg font-semibold mb-4">Delivery Person Terms & Conditions</h3>
+            <pre className="text-sm text-gray-700 whitespace-pre-wrap font-sans">{DELIVERY_PERSON_TERMS}</pre>
+            <button onClick={() => { setTermsAccepted(true); setShowTerms(false); }} className="mt-6 w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700">I Accept</button>
+            <button onClick={() => setShowTerms(false)} className="mt-2 w-full border border-gray-300 py-2 rounded-lg hover:bg-gray-50">Close</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
