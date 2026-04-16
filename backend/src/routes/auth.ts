@@ -6,6 +6,7 @@ import { prisma } from '../prismaClient';
 import { hashPassword, comparePassword, generateToken, authenticateToken, AuthRequest } from '../utils/auth';
 import { sendPasswordResetEmail } from '../utils/email';
 import { createNotification, notifyAdmins } from '../utils/notify';
+import { TERMS_VERSIONS, TermsRole } from '../utils/terms';
 
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -57,7 +58,10 @@ const registerSchema = Joi.object({
     then: Joi.required(),
     otherwise: Joi.optional()
   }),
-  tillNumber: Joi.string().optional()
+  tillNumber: Joi.string().optional(),
+  // Terms acceptance
+  termsAccepted: Joi.boolean().valid(true).required(),
+  termsVersion: Joi.string().required()
 });
 
 const loginSchema = Joi.object({
@@ -74,7 +78,7 @@ router.post('/register', registerLimiter, async (req, res) => {
       return;
     }
 
-    const { email, password, role, fullName, phoneNumber, businessName, idNumber, paymentMode, mpesaNumber, tillNumber } = value;
+    const { email, password, role, fullName, phoneNumber, businessName, idNumber, paymentMode, mpesaNumber, tillNumber, termsAccepted, termsVersion } = value;
 
     // Check if user already exists
     const existingUser = await prisma.user.findUnique({
@@ -142,12 +146,26 @@ router.post('/register', registerLimiter, async (req, res) => {
       data: { userId: user.id, email, role }
     }).catch(() => {}); // fire-and-forget
 
+    // Record T&C acceptance
+    const currentVersion = TERMS_VERSIONS[role as TermsRole];
+    if (currentVersion) {
+      await prisma.termsAcceptance.create({
+        data: {
+          userId: user.id,
+          role,
+          version: termsVersion,
+          ipAddress: req.ip ?? null
+        }
+      }).catch(() => {}); // non-blocking; registration still succeeds
+    }
+
     // Generate token
     const token = generateToken(user.id, user.email, user.role);
 
     res.status(201).json({
       message: 'User registered successfully',
       token,
+      termsAccepted: true,
       user: {
         id: user.id,
         email: user.email,
@@ -197,9 +215,21 @@ router.post('/login', loginLimiter, async (req, res) => {
     // Generate token
     const token = generateToken(user.id, user.email, user.role);
 
+    // Check terms acceptance status for this role
+    const currentTermsVersion = TERMS_VERSIONS[user.role as TermsRole];
+    let termsAccepted = true; // admins don't need T&C
+    if (currentTermsVersion) {
+      const acceptance = await prisma.termsAcceptance.findUnique({
+        where: { userId_role_version: { userId: user.id, role: user.role, version: currentTermsVersion } }
+      });
+      termsAccepted = !!acceptance;
+    }
+
     res.json({
       message: 'Login successful',
       token,
+      termsAccepted,
+      termsVersion: currentTermsVersion ?? null,
       user: {
         id: user.id,
         email: user.email,
@@ -404,6 +434,49 @@ router.post('/set-new-password', async (req, res) => {
     res.json({ message: 'Password updated successfully. You can now log in.' });
   } catch (error) {
     console.error('Set new password error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Accept terms & conditions (authenticated)
+router.post('/accept-terms', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const { role, version } = req.body;
+    if (!role || !version) {
+      return res.status(400).json({ error: 'role and version are required' });
+    }
+    const validRoles = Object.keys(TERMS_VERSIONS);
+    if (!validRoles.includes(role)) {
+      return res.status(400).json({ error: 'Invalid role' });
+    }
+
+    await prisma.termsAcceptance.upsert({
+      where: { userId_role_version: { userId: req.user!.id, role, version } },
+      update: { acceptedAt: new Date() },
+      create: { userId: req.user!.id, role, version, ipAddress: req.ip ?? null }
+    });
+
+    res.json({ accepted: true });
+  } catch (error) {
+    console.error('Accept terms error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get current terms acceptance status (authenticated)
+router.get('/terms-status', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const role = (req.query.role as string) ?? req.user!.role;
+    const currentVersion = TERMS_VERSIONS[role as TermsRole];
+    if (!currentVersion) {
+      return res.json({ accepted: true, currentVersion: null });
+    }
+    const acceptance = await prisma.termsAcceptance.findUnique({
+      where: { userId_role_version: { userId: req.user!.id, role, version: currentVersion } }
+    });
+    res.json({ accepted: !!acceptance, currentVersion });
+  } catch (error) {
+    console.error('Terms status error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

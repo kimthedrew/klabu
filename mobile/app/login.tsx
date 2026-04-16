@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../contexts/AuthContext';
+import api from '../lib/api';
 
 export default function LoginScreen() {
   const { login } = useAuth();
@@ -27,8 +28,19 @@ export default function LoginScreen() {
     }
     setLoading(true);
     try {
+      // Pre-fetch login response to check terms status before delegating to AuthContext
+      const res = await api.post('/auth/login', { email: email.trim().toLowerCase(), password });
       await login(email.trim().toLowerCase(), password);
-      router.replace('/');
+
+      // Redirect to T&C acceptance screen if required
+      if (res.data.termsAccepted === false && res.data.termsVersion && res.data.user?.role) {
+        router.replace({
+          pathname: '/terms-accept',
+          params: { role: res.data.user.role, version: res.data.termsVersion }
+        } as any);
+      } else {
+        router.replace('/');
+      }
     } catch (err: any) {
       Alert.alert('Login Failed', err.message);
     } finally {

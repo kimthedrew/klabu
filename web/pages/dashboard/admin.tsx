@@ -99,6 +99,11 @@ export default function AdminDashboard() {
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [stkPushEnabled, setStkPushEnabled] = useState(false);
   const [togglingStk, setTogglingStk] = useState(false);
+  const [fastDeliveryFee, setFastDeliveryFee] = useState<number>(50);
+  const [slowDeliveryFee, setSlowDeliveryFee] = useState<number>(30);
+  const [commissionRate, setCommissionRate] = useState<number>(33);
+  const [deliveryFeeNote, setDeliveryFeeNote] = useState('');
+  const [savingFees, setSavingFees] = useState(false);
   const [showPasswordSection, setShowPasswordSection] = useState(false);
   const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
   const [showCurrentPw, setShowCurrentPw] = useState(false);
@@ -133,9 +138,31 @@ export default function AdminDashboard() {
       const response = await axios.get(`${API_BASE_URL}/admin/payment-config`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setStkPushEnabled(response.data.config.stkPushEnabled);
+      const cfg = response.data.config;
+      setStkPushEnabled(cfg.stkPushEnabled);
+      setFastDeliveryFee(cfg.fastDeliveryFee ?? 50);
+      setSlowDeliveryFee(cfg.slowDeliveryFee ?? 30);
+      setCommissionRate(Math.round((cfg.commissionRate ?? 0.33) * 100));
+      setDeliveryFeeNote(cfg.deliveryFeeNote ?? '');
     } catch (error) {
       console.error('Error fetching payment config:', error);
+    }
+  };
+
+  const handleSaveDeliveryFees = async () => {
+    setSavingFees(true);
+    try {
+      const token = localStorage.getItem('token');
+      await axios.patch(
+        `${API_BASE_URL}/admin/payment-config/delivery-fee`,
+        { fastDeliveryFee, slowDeliveryFee, commissionRate: commissionRate / 100, deliveryFeeNote },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      toast.success('Delivery settings updated');
+    } catch {
+      toast.error('Failed to update delivery settings');
+    } finally {
+      setSavingFees(false);
     }
   };
 
@@ -597,6 +624,67 @@ export default function AdminDashboard() {
                   ? <ToggleRight size={24} className="text-green-600" />
                   : <ToggleLeft size={24} className="text-gray-400" />}
                 <span>{togglingStk ? 'Updating...' : stkPushEnabled ? 'Enabled' : 'Disabled'}</span>
+              </button>
+            </div>
+
+            {/* Delivery Fees & Commission */}
+            <div className="mt-6 border-t pt-6">
+              <h3 className="font-medium text-gray-900 mb-4">Delivery Fees & Commission</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Fast Delivery Fee (KES)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={fastDeliveryFee}
+                    onChange={(e) => setFastDeliveryFee(Number(e.target.value))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Dedicated delivery person, one order at a time</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Standard Delivery Fee (KES)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={slowDeliveryFee}
+                    onChange={(e) => setSlowDeliveryFee(Number(e.target.value))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Shared delivery person, up to 3 orders at once</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Platform Commission (%)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={commissionRate}
+                    onChange={(e) => setCommissionRate(Number(e.target.value))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Klabu's cut of each delivery fee</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Fee Note (optional)</label>
+                  <input
+                    type="text"
+                    value={deliveryFeeNote}
+                    onChange={(e) => setDeliveryFeeNote(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                    placeholder="e.g. Fee updated Jan 2026"
+                  />
+                </div>
+              </div>
+              <div className="mt-4 p-3 bg-gray-50 rounded-lg text-sm text-gray-600">
+                <p>At {commissionRate}%: Fast delivery person earns KES {Math.round(fastDeliveryFee * (1 - commissionRate / 100) * 100) / 100} (Klabu: KES {Math.round(fastDeliveryFee * commissionRate / 100 * 100) / 100}) &nbsp;|&nbsp; Standard delivery person earns KES {Math.round(slowDeliveryFee * (1 - commissionRate / 100) * 100) / 100} (Klabu: KES {Math.round(slowDeliveryFee * commissionRate / 100 * 100) / 100})</p>
+              </div>
+              <button
+                onClick={handleSaveDeliveryFees}
+                disabled={savingFees}
+                className="mt-4 px-5 py-2.5 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+              >
+                {savingFees ? 'Saving...' : 'Save Delivery Settings'}
               </button>
             </div>
           </div>

@@ -21,6 +21,7 @@ interface DeliveryOrder {
   roomNumber?: string;
   totalAmount: number;
   deliveryFee: number;
+  deliveryTier: string;
   status: string;
   stall: { name: string };
   items: { menuItem: { name: string }; quantity: number }[];
@@ -72,8 +73,13 @@ export default function DeliveryDashboard() {
     <View style={styles.card}>
       <View style={styles.cardTop}>
         <Text style={styles.stallName}>{item.stall.name}</Text>
-        <View style={styles.badge}>
-          <Text style={styles.badgeText}>{item.status.replace('_', ' ')}</Text>
+        <View style={styles.tierRow}>
+          <View style={[styles.tierBadge, item.deliveryTier === 'FAST' ? styles.tierFast : styles.tierSlow]}>
+            <Text style={styles.tierText}>{item.deliveryTier === 'FAST' ? '⚡ Fast' : '📦 Standard'}</Text>
+          </View>
+          <View style={styles.badge}>
+            <Text style={styles.badgeText}>{item.status.replace('_', ' ')}</Text>
+          </View>
         </View>
       </View>
       <Text style={styles.customerName}>{item.customerName} · {item.customerPhone}</Text>
@@ -135,8 +141,13 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 2,
   },
-  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
-  stallName: { fontSize: 16, fontWeight: '700', color: '#111827' },
+  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 },
+  stallName: { fontSize: 16, fontWeight: '700', color: '#111827', flex: 1 },
+  tierRow: { flexDirection: 'column', alignItems: 'flex-end', gap: 4 },
+  tierBadge: { borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2 },
+  tierFast: { backgroundColor: '#fffbeb' },
+  tierSlow: { backgroundColor: '#eff6ff' },
+  tierText: { fontSize: 11, fontWeight: '700' },
   badge: { backgroundColor: '#fef3c7', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
   badgeText: { fontSize: 11, color: '#d97706', fontWeight: '700' },
   customerName: { fontSize: 13, color: '#374151', marginBottom: 2 },

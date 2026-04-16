@@ -109,6 +109,10 @@ export default function AdminDashboard() {
   const [stallOwners, setStallOwners] = useState<StallOwnerEntry[]>([]);
   const [deliveryPersons, setDeliveryPersons] = useState<DeliveryPerson[]>([]);
   const [stkEnabled, setStkEnabled] = useState(false);
+  const [fastDeliveryFee, setFastDeliveryFee] = useState(50);
+  const [slowDeliveryFee, setSlowDeliveryFee] = useState(30);
+  const [commissionRate, setCommissionRate] = useState(33);
+  const [savingFees, setSavingFees] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<RecentOrder | null>(null);
@@ -124,7 +128,27 @@ export default function AdminDashboard() {
     setStats(dashRes.data.stats);
     setRecentOrders(dashRes.data.recentOrders);
     setTopStalls(dashRes.data.topStalls);
-    setStkEnabled(configRes.data.config.stkPushEnabled);
+    const cfg = configRes.data.config;
+    setStkEnabled(cfg.stkPushEnabled);
+    setFastDeliveryFee(cfg.fastDeliveryFee ?? 50);
+    setSlowDeliveryFee(cfg.slowDeliveryFee ?? 30);
+    setCommissionRate(Math.round((cfg.commissionRate ?? 0.33) * 100));
+  };
+
+  const handleSaveDeliveryFees = async () => {
+    setSavingFees(true);
+    try {
+      await api.patch('/admin/payment-config/delivery-fee', {
+        fastDeliveryFee,
+        slowDeliveryFee,
+        commissionRate: commissionRate / 100,
+      });
+      Alert.alert('Success', 'Delivery settings updated');
+    } catch {
+      Alert.alert('Error', 'Failed to update delivery settings');
+    } finally {
+      setSavingFees(false);
+    }
   };
 
   const fetchStalls = async () => {
@@ -252,7 +276,7 @@ export default function AdminDashboard() {
         contentContainerStyle={styles.scrollContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#f97316" />}
       >
-        {tab === 'overview' && <OverviewTab stats={stats} recentOrders={recentOrders} topStalls={topStalls} stkEnabled={stkEnabled} onToggleStk={toggleStk} onOrderPress={openOrder} />}
+        {tab === 'overview' && <OverviewTab stats={stats} recentOrders={recentOrders} topStalls={topStalls} stkEnabled={stkEnabled} onToggleStk={toggleStk} onOrderPress={openOrder} fastDeliveryFee={fastDeliveryFee} slowDeliveryFee={slowDeliveryFee} commissionRate={commissionRate} onFastFeeChange={setFastDeliveryFee} onSlowFeeChange={setSlowDeliveryFee} onCommissionChange={setCommissionRate} onSaveFees={handleSaveDeliveryFees} savingFees={savingFees} />}
         {tab === 'stalls' && <StallsTab stallOwners={stallOwners} onApprove={approveStallOwner} onToggle={toggleStallOwner} />}
         {tab === 'delivery' && <DeliveryTab deliveryPersons={deliveryPersons} onApprove={approveDelivery} onToggle={toggleDelivery} />}
       </ScrollView>
@@ -265,13 +289,21 @@ export default function AdminDashboard() {
 
 // ─── Overview Tab ─────────────────────────────────────────────────────────────
 
-function OverviewTab({ stats, recentOrders, topStalls, stkEnabled, onToggleStk, onOrderPress }: {
+function OverviewTab({ stats, recentOrders, topStalls, stkEnabled, onToggleStk, onOrderPress, fastDeliveryFee, slowDeliveryFee, commissionRate, onFastFeeChange, onSlowFeeChange, onCommissionChange, onSaveFees, savingFees }: {
   stats: Stats | null;
   recentOrders: RecentOrder[];
   topStalls: TopStall[];
   stkEnabled: boolean;
   onToggleStk: () => void;
   onOrderPress: (o: RecentOrder) => void;
+  fastDeliveryFee: number;
+  slowDeliveryFee: number;
+  commissionRate: number;
+  onFastFeeChange: (v: number) => void;
+  onSlowFeeChange: (v: number) => void;
+  onCommissionChange: (v: number) => void;
+  onSaveFees: () => void;
+  savingFees: boolean;
 }) {
   return (
     <>
@@ -286,7 +318,7 @@ function OverviewTab({ stats, recentOrders, topStalls, stkEnabled, onToggleStk, 
         <StatCard label="Revenue (KES)" value={(stats?.totalRevenue ?? 0).toLocaleString()} accent="#f97316" />
       </View>
 
-      {/* STK Push Toggle */}
+      {/* Payment Settings */}
       <Text style={styles.sectionTitle}>Payment Settings</Text>
       <View style={styles.settingRow}>
         <View style={{ flex: 1 }}>
@@ -297,6 +329,41 @@ function OverviewTab({ stats, recentOrders, topStalls, stkEnabled, onToggleStk, 
         </View>
         <Switch value={stkEnabled} onValueChange={onToggleStk} trackColor={{ true: '#f97316' }} />
       </View>
+
+      {/* Delivery Fees */}
+      <Text style={[styles.settingLabel, { marginTop: 16, marginBottom: 8 }]}>Delivery Fees & Commission</Text>
+      <View style={styles.feeRow}>
+        <View style={styles.feeField}>
+          <Text style={styles.feeLabel}>Fast Fee (KES)</Text>
+          <TextInput
+            style={styles.feeInput}
+            keyboardType="numeric"
+            value={String(fastDeliveryFee)}
+            onChangeText={(t) => onFastFeeChange(Number(t) || 0)}
+          />
+        </View>
+        <View style={styles.feeField}>
+          <Text style={styles.feeLabel}>Standard Fee (KES)</Text>
+          <TextInput
+            style={styles.feeInput}
+            keyboardType="numeric"
+            value={String(slowDeliveryFee)}
+            onChangeText={(t) => onSlowFeeChange(Number(t) || 0)}
+          />
+        </View>
+        <View style={styles.feeField}>
+          <Text style={styles.feeLabel}>Commission (%)</Text>
+          <TextInput
+            style={styles.feeInput}
+            keyboardType="numeric"
+            value={String(commissionRate)}
+            onChangeText={(t) => onCommissionChange(Number(t) || 0)}
+          />
+        </View>
+      </View>
+      <Pressable style={[styles.saveBtn, savingFees && { opacity: 0.6 }]} onPress={onSaveFees} disabled={savingFees}>
+        <Text style={styles.saveBtnText}>{savingFees ? 'Saving...' : 'Save Fee Settings'}</Text>
+      </Pressable>
 
       {/* Recent Orders */}
       <Text style={styles.sectionTitle}>Recent Orders</Text>
@@ -565,6 +632,12 @@ const styles = StyleSheet.create({
   settingRow: { backgroundColor: '#fff', borderRadius: 12, padding: 16, flexDirection: 'row', alignItems: 'center', gap: 12 },
   settingLabel: { fontSize: 15, fontWeight: '600', color: '#111827' },
   settingDesc: { fontSize: 12, color: '#6b7280', marginTop: 2 },
+  feeRow: { flexDirection: 'row', gap: 10, marginBottom: 10 },
+  feeField: { flex: 1 },
+  feeLabel: { fontSize: 11, color: '#6b7280', marginBottom: 4 },
+  feeInput: { backgroundColor: '#fff', borderRadius: 8, borderWidth: 1, borderColor: '#d1d5db', paddingHorizontal: 10, paddingVertical: 8, fontSize: 14, color: '#111827' },
+  saveBtn: { backgroundColor: '#f97316', borderRadius: 10, paddingVertical: 12, alignItems: 'center', marginBottom: 16 },
+  saveBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
 
   orderCard: {
     backgroundColor: '#fff',

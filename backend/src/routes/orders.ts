@@ -16,6 +16,7 @@ const createOrderSchema = Joi.object({
   customerPhone: Joi.string().pattern(/^[0-9+\-\s()]+$/).required(),
   deliveryLocation: Joi.string().min(3).required(),
   roomNumber: Joi.string().optional(),
+  deliveryTier: Joi.string().valid('FAST', 'SLOW').default('FAST'),
   paymentMethod: Joi.string().valid('MANUAL', 'STK_PUSH').default('MANUAL'),
   mpesaPayerName: Joi.string()
     .allow('')
@@ -39,13 +40,18 @@ const confirmPaymentSchema = Joi.object({
 // Get current delivery fee config (public - shown on checkout before order is placed)
 router.get('/delivery-config', async (req, res) => {
   try {
-    const cached = getCache<{ deliveryFee: number; deliveryFeeNote: string | null }>('config:delivery');
+    const cached = getCache<{ fastDeliveryFee: number; slowDeliveryFee: number; deliveryFee: number; deliveryFeeNote: string | null }>('config:delivery');
     if (cached) return res.json(cached);
 
     const config = await prisma.paymentConfig.findUnique({ where: { id: 'singleton' } })
-      ?? await prisma.paymentConfig.create({ data: { id: 'singleton', stkPushEnabled: false, deliveryFee: 50 } });
+      ?? await prisma.paymentConfig.create({ data: { id: 'singleton', stkPushEnabled: false, deliveryFee: 50, fastDeliveryFee: 50, slowDeliveryFee: 30, commissionRate: 0.33 } });
 
-    const response = { deliveryFee: config.deliveryFee, deliveryFeeNote: config.deliveryFeeNote ?? null };
+    const response = {
+      fastDeliveryFee: config.fastDeliveryFee,
+      slowDeliveryFee: config.slowDeliveryFee,
+      deliveryFeeNote: config.deliveryFeeNote ?? null,
+      deliveryFee: config.fastDeliveryFee // legacy alias
+    };
     setCache('config:delivery', response, 60); // 1-minute cache so fee changes propagate quickly
     return res.json(response);
   } catch (error) {
@@ -62,7 +68,7 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: error.details[0].message });
     }
 
-    const { stallId, customerName, customerPhone, deliveryLocation, roomNumber, mpesaPayerName, paymentMethod, items } = value;
+    const { stallId, customerName, customerPhone, deliveryLocation, roomNumber, mpesaPayerName, paymentMethod, items, deliveryTier } = value;
 
     // If STK Push was requested, check that admin has enabled it
     if (paymentMethod === 'STK_PUSH') {
@@ -113,11 +119,17 @@ router.post('/', async (req, res) => {
       });
     }
 
-    // Fetch delivery fee from config (admin-controlled)
-    const deliveryConfig = getCache<{ deliveryFee: number; deliveryFeeNote: string | null }>('config:delivery');
-    const deliveryFee = deliveryConfig
-      ? deliveryConfig.deliveryFee
-      : (await prisma.paymentConfig.findUnique({ where: { id: 'singleton' } }))?.deliveryFee ?? 50;
+    // Fetch delivery fees and commission from config (admin-controlled)
+    const deliveryConfigCached = getCache<{ fastDeliveryFee: number; slowDeliveryFee: number }>('config:delivery');
+    const paymentConfig = deliveryConfigCached
+      ? null
+      : await prisma.paymentConfig.findUnique({ where: { id: 'singleton' } });
+    const fastDeliveryFee = deliveryConfigCached?.fastDeliveryFee ?? paymentConfig?.fastDeliveryFee ?? 50;
+    const slowDeliveryFee = deliveryConfigCached?.slowDeliveryFee ?? paymentConfig?.slowDeliveryFee ?? 30;
+    const commissionRate = paymentConfig?.commissionRate ?? 0.33;
+    const deliveryFee = deliveryTier === 'SLOW' ? slowDeliveryFee : fastDeliveryFee;
+    const platformCut = Math.round(deliveryFee * commissionRate * 100) / 100;
+    const deliveryPersonEarnings = Math.round((deliveryFee - platformCut) * 100) / 100;
     const finalTotal = totalAmount + deliveryFee;
 
     // Create order
@@ -130,6 +142,9 @@ router.post('/', async (req, res) => {
         roomNumber,
         totalAmount,
         deliveryFee,
+        deliveryTier,
+        platformCut,
+        deliveryPersonEarnings,
         mpesaPayerName,
         paymentStatus: 'PENDING',
         status: 'PENDING',
