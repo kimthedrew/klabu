@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import SEO from '../components/SEO';
-import { Search, MapPin, Clock, Star, Phone, ShoppingCart } from 'lucide-react';
+import { Search, MapPin, Clock, Star, Phone, ShoppingCart, User } from 'lucide-react';
 import axios from 'axios';
 import { API_BASE_URL } from '../lib/config';
 import toast from 'react-hot-toast';
@@ -37,9 +37,17 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [foodSearch, setFoodSearch] = useState('');
+  const [customerName, setCustomerName] = useState<string | null>(null);
 
   useEffect(() => {
     fetchStalls();
+    const user = localStorage.getItem('customerUser');
+    if (user) {
+      try {
+        const parsed = JSON.parse(user);
+        if (parsed.role === 'CUSTOMER') setCustomerName(parsed.profile?.fullName ?? null);
+      } catch {}
+    }
   }, []);
 
   const fetchStalls = async () => {
@@ -130,6 +138,17 @@ export default function Home() {
                 <span className="ml-2 text-sm text-gray-500 hidden sm:inline">UON Food Delivery</span>
               </div>
               <div className="flex items-center gap-2">
+                {customerName ? (
+                  <Link href="/customer/orders" className="flex items-center gap-1.5 text-sm text-gray-600 hover:text-green-600 transition-colors px-3 py-2">
+                    <User size={16} />
+                    <span className="hidden sm:inline">{customerName}</span>
+                    <span className="sm:hidden">My Orders</span>
+                  </Link>
+                ) : (
+                  <Link href="/customer/login" className="text-sm text-gray-600 hover:text-green-600 transition-colors px-3 py-2 hidden sm:block">
+                    Sign in
+                  </Link>
+                )}
                 <Link href="/reviews" className="bg-blue-600 text-white px-3 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center text-sm">
                   <Star size={16} className="mr-1 sm:mr-2" />
                   Reviews

@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import SEO from '../../components/SEO';
-import { ArrowLeft, Star, Phone, ShoppingCart, Plus, Minus, Copy, Check } from 'lucide-react';
+import { ArrowLeft, Star, Phone, ShoppingCart, Plus, Minus, Copy, Check, User } from 'lucide-react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { API_BASE_URL } from '../../lib/config';
@@ -64,6 +64,27 @@ export default function StallPage({ stall, stkPushEnabled, fastDeliveryFee, slow
     mpesaPayerName: '',
     paymentMethod: 'MANUAL'
   });
+  const [loggedInCustomer, setLoggedInCustomer] = useState<{ id: string; fullName: string; phoneNumber?: string } | null>(null);
+  const [showSignupPrompt, setShowSignupPrompt] = useState(false);
+  const [lastOrderId, setLastOrderId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const token = localStorage.getItem('customerToken');
+    const user = localStorage.getItem('customerUser');
+    if (token && user) {
+      try {
+        const parsed = JSON.parse(user);
+        if (parsed.role === 'CUSTOMER' && parsed.profile) {
+          setLoggedInCustomer({ id: parsed.profile.id, fullName: parsed.profile.fullName, phoneNumber: parsed.profile.phoneNumber ?? undefined });
+          setOrderForm(prev => ({
+            ...prev,
+            customerName: parsed.profile.fullName ?? prev.customerName,
+            customerPhone: parsed.profile.phoneNumber ?? prev.customerPhone
+          }));
+        }
+      } catch {}
+    }
+  }, []);
 
   const addToCart = (menuItem: MenuItem) => {
     setCart(prev => {
@@ -109,14 +130,15 @@ export default function StallPage({ stall, stkPushEnabled, fastDeliveryFee, slow
 
   const handleOrder = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (cart.length === 0) {
       toast.error('Your cart is empty');
       return;
     }
 
     try {
-      const orderData = {
+      const token = loggedInCustomer ? localStorage.getItem('customerToken') : null;
+      const orderData: Record<string, unknown> = {
         stallId: stall!.id,
         customerName: orderForm.customerName,
         customerPhone: orderForm.customerPhone,
@@ -130,37 +152,50 @@ export default function StallPage({ stall, stkPushEnabled, fastDeliveryFee, slow
           quantity: item.quantity
         }))
       };
+      if (loggedInCustomer) orderData.customerId = loggedInCustomer.id;
 
-      const response = await axios.post(`${API_BASE_URL}/orders`, orderData);
-      
+      const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+      const response = await axios.post(`${API_BASE_URL}/orders`, orderData, { headers });
+      const placedOrderId: string = response.data.order.id;
+
       // If STK Push is selected, initiate payment
       if (orderForm.paymentMethod === 'STK_PUSH') {
         try {
           const stkResponse = await axios.post(`${API_BASE_URL}/payments/stk-push`, {
-            orderId: response.data.order.id,
+            orderId: placedOrderId,
             phoneNumber: orderForm.customerPhone
           });
 
           toast.success('Payment request sent to your phone! Please check your phone and enter your M-Pesa PIN to complete the payment.');
-          
-          // Show payment status
-          alert(`Order ID: ${response.data.order.id}\nTotal: KES ${response.data.order.totalAmount + response.data.order.deliveryFee}\n\n${stkResponse.data.customerMessage}\n\nPlease complete the payment on your phone to confirm your order.`);
-          
+          alert(`Order ID: ${placedOrderId}\nTotal: KES ${response.data.order.totalAmount + response.data.order.deliveryFee}\n\n${stkResponse.data.customerMessage}\n\nPlease complete the payment on your phone to confirm your order.`);
         } catch (stkError: any) {
           toast.error(stkError.response?.data?.error || 'Failed to initiate payment');
           return;
         }
       } else {
         toast.success('Order placed successfully!');
-        alert(`Order ID: ${response.data.order.id}\nTotal: KES ${response.data.order.totalAmount + response.data.order.deliveryFee}\n\nYour order has been placed! The stall owner will verify your payment and confirm the order. You'll be notified when your order is confirmed and on its way.`);
+        alert(`Order ID: ${placedOrderId}\nTotal: KES ${response.data.order.totalAmount + response.data.order.deliveryFee}\n\nYour order has been placed! The stall owner will verify your payment and confirm the order. You'll be notified when your order is confirmed and on its way.`);
       }
 
       setCart([]);
       setShowOrderModal(false);
       setDeliveryTier('FAST');
       setBuyerTermsAccepted(false);
-      setOrderForm({ customerName: '', customerPhone: '', deliveryLocation: '', roomNumber: '', mpesaPayerName: '', paymentMethod: 'MANUAL' });
-      
+      setOrderForm(prev => ({
+        customerName: loggedInCustomer?.fullName ?? '',
+        customerPhone: loggedInCustomer?.phoneNumber ?? '',
+        deliveryLocation: '',
+        roomNumber: '',
+        mpesaPayerName: '',
+        paymentMethod: prev.paymentMethod
+      }));
+
+      // Show signup prompt for guests
+      if (!loggedInCustomer) {
+        setLastOrderId(placedOrderId);
+        setShowSignupPrompt(true);
+      }
+
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Failed to place order');
     }
@@ -227,19 +262,31 @@ export default function StallPage({ stall, stkPushEnabled, fastDeliveryFee, slow
                 </Link>
                 <h1 className="text-xl sm:text-2xl font-bold text-green-600 truncate">Klabu</h1>
               </div>
-              <button
-                onClick={() => setShowOrderModal(true)}
-                className="btn-primary flex items-center relative flex-shrink-0"
-                disabled={cart.length === 0}
-              >
-                <ShoppingCart size={20} className="mr-1 sm:mr-2" />
-                <span className="hidden sm:inline">Order </span>({cart.length})
-                {cart.length > 0 && (
-                  <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
-                    {cart.reduce((sum, item) => sum + item.quantity, 0)}
-                  </span>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                {loggedInCustomer ? (
+                  <Link href="/customer/orders" className="flex items-center gap-1.5 text-sm text-gray-600 hover:text-green-600 transition-colors">
+                    <User size={16} />
+                    <span className="hidden sm:inline">My Orders</span>
+                  </Link>
+                ) : (
+                  <Link href="/customer/login" className="text-sm text-gray-500 hover:text-green-600 transition-colors hidden sm:block">
+                    Sign in
+                  </Link>
                 )}
-              </button>
+                <button
+                  onClick={() => setShowOrderModal(true)}
+                  className="btn-primary flex items-center relative"
+                  disabled={cart.length === 0}
+                >
+                  <ShoppingCart size={20} className="mr-1 sm:mr-2" />
+                  <span className="hidden sm:inline">Order </span>({cart.length})
+                  {cart.length > 0 && (
+                    <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                      {cart.reduce((sum, item) => sum + item.quantity, 0)}
+                    </span>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </header>
@@ -362,6 +409,40 @@ export default function StallPage({ stall, stkPushEnabled, fastDeliveryFee, slow
             ))}
           </div>
         </div>
+
+        {/* Post-order signup prompt for guests */}
+        {showSignupPrompt && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-2xl p-6 w-full max-w-sm">
+              <h3 className="text-lg font-semibold text-gray-900 mb-1">Track your order</h3>
+              <p className="text-sm text-gray-500 mb-5">
+                Create a free account to see live updates on this order and access your order history anytime.
+              </p>
+              <div className="space-y-2">
+                <Link
+                  href={`/customer/register`}
+                  className="block w-full text-center bg-green-600 hover:bg-green-700 text-white font-semibold py-2.5 rounded-xl transition-colors"
+                  onClick={() => setShowSignupPrompt(false)}
+                >
+                  Create account — it&apos;s free
+                </Link>
+                <Link
+                  href={`/customer/login`}
+                  className="block w-full text-center border border-gray-200 text-gray-700 font-medium py-2.5 rounded-xl hover:bg-gray-50 transition-colors"
+                  onClick={() => setShowSignupPrompt(false)}
+                >
+                  I already have an account
+                </Link>
+                <button
+                  onClick={() => setShowSignupPrompt(false)}
+                  className="block w-full text-center text-sm text-gray-400 hover:text-gray-600 py-2 transition-colors"
+                >
+                  No thanks
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Order Modal */}
         {showOrderModal && (
@@ -515,6 +596,12 @@ export default function StallPage({ stall, stkPushEnabled, fastDeliveryFee, slow
               )}
 
               {/* Order Form */}
+              {loggedInCustomer && (
+                <div className="mb-4 flex items-center justify-between bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-sm">
+                  <span className="text-green-700">Signed in as <strong>{loggedInCustomer.fullName}</strong></span>
+                  <Link href="/customer/orders" className="text-green-600 hover:text-green-700 font-medium ml-2 flex-shrink-0">My Orders</Link>
+                </div>
+              )}
               <form onSubmit={handleOrder} className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">

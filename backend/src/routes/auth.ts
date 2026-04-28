@@ -38,9 +38,13 @@ const router = express.Router();
 const registerSchema = Joi.object({
   email: Joi.string().email().required(),
   password: Joi.string().min(6).required(),
-  role: Joi.string().valid('STALL_OWNER', 'DELIVERY_PERSON').required(),
+  role: Joi.string().valid('STALL_OWNER', 'DELIVERY_PERSON', 'CUSTOMER').required(),
   fullName: Joi.string().min(2).required(),
-  phoneNumber: Joi.string().pattern(/^[0-9+\-\s()]+$/).required(),
+  phoneNumber: Joi.string().pattern(/^[0-9+\-\s()]+$/).when('role', {
+    is: Joi.valid('STALL_OWNER', 'DELIVERY_PERSON'),
+    then: Joi.required(),
+    otherwise: Joi.optional()
+  }),
   businessName: Joi.string().optional(),
   idNumber: Joi.string().when('role', {
     is: 'DELIVERY_PERSON',
@@ -59,9 +63,17 @@ const registerSchema = Joi.object({
     otherwise: Joi.optional()
   }),
   tillNumber: Joi.string().optional(),
-  // Terms acceptance
-  termsAccepted: Joi.boolean().valid(true).required(),
-  termsVersion: Joi.string().required()
+  // Terms acceptance (not required for CUSTOMER)
+  termsAccepted: Joi.boolean().valid(true).when('role', {
+    is: Joi.valid('STALL_OWNER', 'DELIVERY_PERSON'),
+    then: Joi.required(),
+    otherwise: Joi.optional()
+  }),
+  termsVersion: Joi.string().when('role', {
+    is: Joi.valid('STALL_OWNER', 'DELIVERY_PERSON'),
+    then: Joi.required(),
+    otherwise: Joi.optional()
+  })
 });
 
 const loginSchema = Joi.object({
@@ -105,72 +117,69 @@ router.post('/register', registerLimiter, async (req, res) => {
     // Hash password
     const hashedPassword = await hashPassword(password);
 
+    // Build nested profile create based on role
+    const profileData =
+      role === 'STALL_OWNER'
+        ? { stallOwner: { create: { fullName, businessName, phoneNumber, paymentMode, mpesaNumber, tillNumber } } }
+        : role === 'DELIVERY_PERSON'
+        ? { deliveryPerson: { create: { fullName, phoneNumber, idNumber: idNumber! } } }
+        : { customer: { create: { fullName, phoneNumber: phoneNumber ?? null } } };
+
     // Create user and related profile
     const user = await prisma.user.create({
       data: {
         email,
         password: hashedPassword,
         role,
-        ...(role === 'STALL_OWNER' ? {
-          stallOwner: {
-            create: {
-              fullName,
-              businessName,
-              phoneNumber,
-              paymentMode,
-              mpesaNumber,
-              tillNumber
-            }
-          }
-        } : {
-          deliveryPerson: {
-            create: {
-              fullName,
-              phoneNumber,
-              idNumber: idNumber!
-            }
-          }
-        })
+        ...profileData
       },
       include: {
         stallOwner: role === 'STALL_OWNER',
-        deliveryPerson: role === 'DELIVERY_PERSON'
+        deliveryPerson: role === 'DELIVERY_PERSON',
+        customer: role === 'CUSTOMER'
       }
     });
 
-    // Notify admins of new registration
-    notifyAdmins({
-      type: 'NEW_STALL_REGISTERED',
-      title: 'New Registration',
-      message: `${email} registered as ${role === 'STALL_OWNER' ? 'a stall owner' : 'a delivery person'}`,
-      data: { userId: user.id, email, role }
-    }).catch(() => {}); // fire-and-forget
+    if (role !== 'CUSTOMER') {
+      // Notify admins of new staff registration
+      notifyAdmins({
+        type: 'NEW_STALL_REGISTERED',
+        title: 'New Registration',
+        message: `${email} registered as ${role === 'STALL_OWNER' ? 'a stall owner' : 'a delivery person'}`,
+        data: { userId: user.id, email, role }
+      }).catch(() => {});
 
-    // Record T&C acceptance
-    const currentVersion = TERMS_VERSIONS[role as TermsRole];
-    if (currentVersion) {
-      await prisma.termsAcceptance.create({
-        data: {
-          userId: user.id,
-          role,
-          version: termsVersion,
-          ipAddress: req.ip ?? null
-        }
-      }).catch(() => {}); // non-blocking; registration still succeeds
+      // Record T&C acceptance
+      const currentVersion = TERMS_VERSIONS[role as TermsRole];
+      if (currentVersion) {
+        await prisma.termsAcceptance.create({
+          data: {
+            userId: user.id,
+            role,
+            version: termsVersion,
+            ipAddress: req.ip ?? null
+          }
+        }).catch(() => {});
+      }
     }
 
     // Generate token
     const token = generateToken(user.id, user.email, user.role);
 
+    const profile =
+      role === 'STALL_OWNER' ? user.stallOwner
+      : role === 'DELIVERY_PERSON' ? user.deliveryPerson
+      : user.customer;
+
     res.status(201).json({
       message: 'User registered successfully',
       token,
-      termsAccepted: true,
+      termsAccepted: role !== 'CUSTOMER' ? true : undefined,
       user: {
         id: user.id,
         email: user.email,
         role: user.role,
-        profile: role === 'STALL_OWNER' ? user.stallOwner : user.deliveryPerson
+        profile
       }
     });
 
@@ -196,7 +205,8 @@ router.post('/login', loginLimiter, async (req, res) => {
       where: { email },
       include: {
         stallOwner: true,
-        deliveryPerson: true
+        deliveryPerson: true,
+        customer: true
       }
     });
 
@@ -225,6 +235,11 @@ router.post('/login', loginLimiter, async (req, res) => {
       termsAccepted = !!acceptance;
     }
 
+    const loginProfile =
+      user.role === 'STALL_OWNER' ? user.stallOwner
+      : user.role === 'DELIVERY_PERSON' ? user.deliveryPerson
+      : user.customer;
+
     res.json({
       message: 'Login successful',
       token,
@@ -234,7 +249,7 @@ router.post('/login', loginLimiter, async (req, res) => {
         id: user.id,
         email: user.email,
         role: user.role,
-        profile: user.role === 'STALL_OWNER' ? user.stallOwner : user.deliveryPerson
+        profile: loginProfile
       }
     });
 
@@ -259,7 +274,8 @@ router.get('/me', authenticateToken, async (req: AuthRequest, res) => {
             }
           }
         },
-        deliveryPerson: true
+        deliveryPerson: true,
+        customer: true
       }
     });
 
@@ -268,12 +284,17 @@ router.get('/me', authenticateToken, async (req: AuthRequest, res) => {
       return;
     }
 
+    const meProfile =
+      user.role === 'STALL_OWNER' ? user.stallOwner
+      : user.role === 'DELIVERY_PERSON' ? user.deliveryPerson
+      : user.customer;
+
     res.json({
       user: {
         id: user.id,
         email: user.email,
         role: user.role,
-        profile: user.role === 'STALL_OWNER' ? user.stallOwner : user.deliveryPerson
+        profile: meProfile
       }
     });
 

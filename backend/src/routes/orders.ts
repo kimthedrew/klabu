@@ -2,6 +2,7 @@ import express from 'express';
 import Joi from 'joi';
 import { prisma } from '../prismaClient';
 import { authenticateToken, requireRole, AuthRequest } from '../utils/auth';
+import { verifyToken } from '../utils/auth';
 import { io } from '../index';
 import { DeliveryAssignmentService } from '../services/deliveryAssignmentService';
 import { getCache, setCache, invalidateCache } from '../utils/cache';
@@ -12,6 +13,7 @@ const router = express.Router();
 // Validation schemas
 const createOrderSchema = Joi.object({
   stallId: Joi.string().required(),
+  customerId: Joi.string().optional(),
   customerName: Joi.string().min(2).required(),
   customerPhone: Joi.string().pattern(/^[0-9+\-\s()]+$/).required(),
   deliveryLocation: Joi.string().min(3).required(),
@@ -68,7 +70,24 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: error.details[0].message });
     }
 
-    const { stallId, customerName, customerPhone, deliveryLocation, roomNumber, mpesaPayerName, paymentMethod, items, deliveryTier } = value;
+    const { stallId, customerId, customerName, customerPhone, deliveryLocation, roomNumber, mpesaPayerName, paymentMethod, items, deliveryTier } = value;
+
+    // If customerId is provided, verify it matches the bearer token (if present)
+    if (customerId) {
+      const authHeader = req.headers['authorization'];
+      const token = authHeader?.split(' ')[1];
+      if (token) {
+        try {
+          const decoded = verifyToken(token);
+          const customer = await prisma.customer.findUnique({ where: { id: customerId } });
+          if (!customer || customer.userId !== decoded.userId) {
+            return res.status(403).json({ error: 'Customer ID does not match authenticated user' });
+          }
+        } catch {
+          return res.status(403).json({ error: 'Invalid token' });
+        }
+      }
+    }
 
     // If STK Push was requested, check that admin has enabled it
     if (paymentMethod === 'STK_PUSH') {
@@ -136,6 +155,7 @@ router.post('/', async (req, res) => {
     const order = await prisma.order.create({
       data: {
         stallId,
+        ...(customerId ? { customerId } : {}),
         customerName,
         customerPhone,
         deliveryLocation,
@@ -207,6 +227,34 @@ router.post('/', async (req, res) => {
 
   } catch (error) {
     console.error('Create order error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get logged-in customer's orders (CUSTOMER only)
+router.get('/customer/my-orders', authenticateToken, requireRole(['CUSTOMER']), async (req: AuthRequest, res) => {
+  try {
+    const customer = await prisma.customer.findUnique({
+      where: { userId: req.user!.id }
+    });
+
+    if (!customer) {
+      return res.status(404).json({ error: 'Customer profile not found' });
+    }
+
+    const orders = await prisma.order.findMany({
+      where: { customerId: customer.id },
+      include: {
+        stall: { select: { name: true } },
+        items: { include: { menuItem: { select: { name: true } } } },
+        deliveryPerson: { select: { fullName: true, phoneNumber: true } }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    res.json({ orders });
+  } catch (error) {
+    console.error('Get customer orders error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
