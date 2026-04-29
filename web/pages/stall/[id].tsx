@@ -1,7 +1,14 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/router';
 import SEO from '../../components/SEO';
-import { ArrowLeft, Star, Phone, ShoppingCart, Plus, Minus, Copy, Check } from 'lucide-react';
+import MenuItemRow from '../../components/MenuItemRow';
+import CustomizationSheet from '../../components/CustomizationSheet';
+import FloatingBasketButton from '../../components/FloatingBasketButton';
+import QuantityStepper from '../../components/QuantityStepper';
+import StkPushOverlay from '../../components/StkPushOverlay';
+import OrderSuccessSheet from '../../components/OrderSuccessSheet';
+import { Copy, Check, Phone } from 'lucide-react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { API_BASE_URL } from '../../lib/config';
@@ -41,7 +48,7 @@ interface CartItem {
   quantity: number;
 }
 
-interface StallPageProps {
+interface Props {
   stall: Stall;
   stkPushEnabled: boolean;
   fastDeliveryFee: number;
@@ -49,621 +56,421 @@ interface StallPageProps {
   deliveryFeeNote: string | null;
 }
 
-export default function StallPage({ stall, stkPushEnabled, fastDeliveryFee, slowDeliveryFee, deliveryFeeNote }: StallPageProps) {
+export default function StallPage({ stall, stkPushEnabled, fastDeliveryFee, slowDeliveryFee, deliveryFeeNote }: Props) {
+  const router = useRouter();
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [showOrderModal, setShowOrderModal] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
+  const [showCheckout, setShowCheckout] = useState(false);
   const [copiedTill, setCopiedTill] = useState(false);
+  const [coverParallax, setCoverParallax] = useState(0);
   const [deliveryTier, setDeliveryTier] = useState<'FAST' | 'SLOW'>('FAST');
   const [buyerTermsAccepted, setBuyerTermsAccepted] = useState(false);
-  const [showBuyerTerms, setShowBuyerTerms] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [stkOverlay, setStkOverlay] = useState<{ open: boolean; orderId: string; phone: string }>({ open: false, orderId: '', phone: '' });
+  const [successSheet, setSuccessSheet] = useState<{ open: boolean; orderId: string; total: number; paymentMethod: string }>({ open: false, orderId: '', total: 0, paymentMethod: 'MANUAL' });
   const [orderForm, setOrderForm] = useState({
     customerName: '',
     customerPhone: '',
     deliveryLocation: '',
     roomNumber: '',
     mpesaPayerName: '',
-    paymentMethod: 'MANUAL'
+    paymentMethod: 'MANUAL',
   });
 
-  const addToCart = (menuItem: MenuItem) => {
+  // Parallax on cover image
+  useEffect(() => {
+    const onScroll = () => setCoverParallax(window.scrollY * 0.5);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  const addToCart = (item: MenuItem, quantity: number) => {
     setCart(prev => {
-      const existingItem = prev.find(item => item.menuItem.id === menuItem.id);
-      if (existingItem) {
-        return prev.map(item =>
-          item.menuItem.id === menuItem.id
-            ? { ...item, quantity: item.quantity + 1 }
-            : item
-        );
+      const existing = prev.find(c => c.menuItem.id === item.id);
+      if (existing) {
+        return prev.map(c => c.menuItem.id === item.id ? { ...c, quantity: c.quantity + quantity } : c);
       }
-      return [...prev, { menuItem, quantity: 1 }];
+      return [...prev, { menuItem: item, quantity }];
     });
-    toast.success(`${menuItem.name} added to cart`);
+    toast.success(`${item.name} added`);
   };
 
-  const removeFromCart = (menuItemId: string) => {
-    setCart(prev => prev.filter(item => item.menuItem.id !== menuItemId));
-    toast.success('Item removed from cart');
+  const updateQty = (id: string, qty: number) => {
+    if (qty <= 0) setCart(prev => prev.filter(c => c.menuItem.id !== id));
+    else setCart(prev => prev.map(c => c.menuItem.id === id ? { ...c, quantity: qty } : c));
   };
 
-  const updateQuantity = (menuItemId: string, quantity: number) => {
-    if (quantity <= 0) {
-      removeFromCart(menuItemId);
-      return;
-    }
-    setCart(prev =>
-      prev.map(item =>
-        item.menuItem.id === menuItemId
-          ? { ...item, quantity }
-          : item
-      )
-    );
-  };
+  const subtotal = cart.reduce((sum, c) => sum + c.menuItem.price * c.quantity, 0);
+  const deliveryFee = deliveryTier === 'FAST' ? fastDeliveryFee : slowDeliveryFee;
+  const total = subtotal + deliveryFee;
+  const itemCount = cart.reduce((sum, c) => sum + c.quantity, 0);
 
-  const getTotalAmount = () => {
-    return cart.reduce((total, item) => total + (item.menuItem.price * item.quantity), 0);
-  };
-
-  const getDeliveryFee = () => deliveryTier === 'FAST' ? fastDeliveryFee : slowDeliveryFee;
-
-  const getOrderTotal = () => getTotalAmount() + getDeliveryFee();
-
-  const handleOrder = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (cart.length === 0) {
-      toast.error('Your cart is empty');
-      return;
-    }
-
-    try {
-      const orderData = {
-        stallId: stall!.id,
-        customerName: orderForm.customerName,
-        customerPhone: orderForm.customerPhone,
-        deliveryLocation: orderForm.deliveryLocation,
-        roomNumber: orderForm.roomNumber,
-        mpesaPayerName: orderForm.mpesaPayerName,
-        paymentMethod: orderForm.paymentMethod,
-        deliveryTier,
-        items: cart.map(item => ({
-          menuItemId: item.menuItem.id,
-          quantity: item.quantity
-        }))
-      };
-
-      const response = await axios.post(`${API_BASE_URL}/orders`, orderData);
-      
-      // If STK Push is selected, initiate payment
-      if (orderForm.paymentMethod === 'STK_PUSH') {
-        try {
-          const stkResponse = await axios.post(`${API_BASE_URL}/payments/stk-push`, {
-            orderId: response.data.order.id,
-            phoneNumber: orderForm.customerPhone
-          });
-
-          toast.success('Payment request sent to your phone! Please check your phone and enter your M-Pesa PIN to complete the payment.');
-          
-          // Show payment status
-          alert(`Order ID: ${response.data.order.id}\nTotal: KES ${response.data.order.totalAmount + response.data.order.deliveryFee}\n\n${stkResponse.data.customerMessage}\n\nPlease complete the payment on your phone to confirm your order.`);
-          
-        } catch (stkError: any) {
-          toast.error(stkError.response?.data?.error || 'Failed to initiate payment');
-          return;
-        }
-      } else {
-        toast.success('Order placed successfully!');
-        alert(`Order ID: ${response.data.order.id}\nTotal: KES ${response.data.order.totalAmount + response.data.order.deliveryFee}\n\nYour order has been placed! The stall owner will verify your payment and confirm the order. You'll be notified when your order is confirmed and on its way.`);
-      }
-
-      setCart([]);
-      setShowOrderModal(false);
-      setDeliveryTier('FAST');
-      setBuyerTermsAccepted(false);
-      setOrderForm({ customerName: '', customerPhone: '', deliveryLocation: '', roomNumber: '', mpesaPayerName: '', paymentMethod: 'MANUAL' });
-      
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to place order');
-    }
-  };
-
-  const copyTill = (value: string) => {
-    navigator.clipboard.writeText(value);
+  const copyTill = (val: string) => {
+    navigator.clipboard.writeText(val);
     setCopiedTill(true);
     setTimeout(() => setCopiedTill(false), 2000);
   };
 
+  const handleOrder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (cart.length === 0) { toast.error('Your cart is empty'); return; }
+    setSubmitting(true);
+    try {
+      const res = await axios.post(`${API_BASE_URL}/orders`, {
+        stallId: stall.id,
+        ...orderForm,
+        deliveryTier,
+        items: cart.map(c => ({ menuItemId: c.menuItem.id, quantity: c.quantity })),
+      });
+
+      const placedOrder = res.data.order;
+      const placedTotal = placedOrder.totalAmount + placedOrder.deliveryFee;
+
+      // Save guest tracking handles so home can offer "Track your last order"
+      // and /orders can list recent ones.
+      try {
+        localStorage.setItem('lastOrderId', placedOrder.id);
+        const raw = localStorage.getItem('myOrders');
+        const list: string[] = raw ? JSON.parse(raw) : [];
+        const next = [placedOrder.id, ...list.filter(x => x !== placedOrder.id)].slice(0, 30);
+        localStorage.setItem('myOrders', JSON.stringify(next));
+      } catch {}
+
+      setCart([]);
+      setShowCheckout(false);
+
+      if (orderForm.paymentMethod === 'STK_PUSH') {
+        setStkOverlay({ open: true, orderId: placedOrder.id, phone: orderForm.customerPhone });
+      } else {
+        setSuccessSheet({ open: true, orderId: placedOrder.id, total: placedTotal, paymentMethod: orderForm.paymentMethod });
+      }
+
+      setOrderForm({ customerName: '', customerPhone: '', deliveryLocation: '', roomNumber: '', mpesaPayerName: '', paymentMethod: 'MANUAL' });
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || 'Failed to place order');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleStkSuccess = () => {
+    const orderId = stkOverlay.orderId;
+    setStkOverlay({ open: false, orderId: '', phone: '' });
+    router.push(`/orders/${orderId}`);
+  };
+
+  const handleStkClose = () => {
+    const orderId = stkOverlay.orderId;
+    setStkOverlay({ open: false, orderId: '', phone: '' });
+    if (orderId) router.push(`/orders/${orderId}`);
+  };
+
+  const availableItems = stall.menuItems.filter(i => i.isAvailable);
+  const unavailableItems = stall.menuItems.filter(i => !i.isAvailable);
 
   return (
     <>
       <SEO
         title={stall.name}
-        description={`Order from ${stall.name} at the University of Nairobi on Klabu. ${stall.description || ''} Fast UON food delivery to your hostel.`.trim()}
+        description={`Order from ${stall.name} at the University of Nairobi. ${stall.description || ''}`}
         canonical={`/stall/${stall.id}`}
-        ogType="restaurant"
         ogImage={stall.stallOwner.stallPhoto}
-        jsonLd={{
-          '@context': 'https://schema.org',
-          '@type': 'FoodEstablishment',
-          name: stall.name,
-          description: stall.description,
-          url: `https://klabu.site/stall/${stall.id}`,
-          servesCuisine: 'African',
-          areaServed: 'University of Nairobi, Nairobi, Kenya',
-          aggregateRating: stall.totalReviews > 0 ? {
-            '@type': 'AggregateRating',
-            ratingValue: stall.averageRating,
-            reviewCount: stall.totalReviews,
-          } : undefined,
-          hasMenu: {
-            '@type': 'Menu',
-            hasMenuSection: {
-              '@type': 'MenuSection',
-              hasMenuItem: stall.menuItems.map((item) => ({
-                '@type': 'MenuItem',
-                name: item.name,
-                description: item.description,
-                offers: {
-                  '@type': 'Offer',
-                  price: item.price,
-                  priceCurrency: 'KES',
-                  availability: item.isAvailable
-                    ? 'https://schema.org/InStock'
-                    : 'https://schema.org/OutOfStock',
-                },
-              })),
-            },
-          },
-        }}
       />
 
-      <div className="min-h-screen bg-gray-50">
-        {/* Header */}
-        <header className="bg-white shadow-sm border-b">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center py-4 gap-2">
-              <div className="flex items-center min-w-0">
-                <Link href="/" className="flex items-center text-gray-600 hover:text-gray-900 mr-3 flex-shrink-0">
-                  <ArrowLeft size={20} />
-                </Link>
-                <h1 className="text-xl sm:text-2xl font-bold text-green-600 truncate">Klabu</h1>
-              </div>
-              <button
-                onClick={() => setShowOrderModal(true)}
-                className="btn-primary flex items-center relative flex-shrink-0"
-                disabled={cart.length === 0}
-              >
-                <ShoppingCart size={20} className="mr-1 sm:mr-2" />
-                <span className="hidden sm:inline">Order </span>({cart.length})
-                {cart.length > 0 && (
-                  <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
-                    {cart.reduce((sum, item) => sum + item.quantity, 0)}
-                  </span>
-                )}
-              </button>
+      <div className="min-h-screen bg-background font-body pb-28">
+        {/* Cover image with parallax */}
+        <div className="relative h-[250px] overflow-hidden sepia-warm">
+          {stall.stallOwner.stallPhoto ? (
+            <img
+              src={stall.stallOwner.stallPhoto}
+              alt={stall.name}
+              className="w-full h-[300px] object-cover"
+              style={{ transform: `translateY(${coverParallax}px)` }}
+            />
+          ) : (
+            <div className="w-full h-full bg-gradient-to-br from-muted/30 to-muted/10 flex items-center justify-center">
+              <span className="text-6xl">🍽️</span>
             </div>
-          </div>
-        </header>
-
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          {/* Stall Info */}
-          <div className="bg-white rounded-lg shadow-md p-6 mb-8">
-            <div className="flex flex-col md:flex-row gap-6">
-              {stall.stallOwner.stallPhoto && (
-                <div className="md:w-1/3">
-                  <img
-                    src={stall.stallOwner.stallPhoto}
-                    alt={stall.name}
-                    className="w-full h-48 object-cover rounded-lg"
-                  />
-                </div>
-              )}
-              
-              <div className="flex-1">
-                <h1 className="text-3xl font-bold text-gray-900 mb-2">{stall.name}</h1>
-                <p className="text-gray-600 mb-4">{stall.stallOwner.fullName}</p>
-                
-                {stall.description && (
-                  <p className="text-gray-700 mb-4">{stall.description}</p>
-                )}
-                
-                <div className="flex items-center space-x-6 mb-4">
-                  <div className="flex items-center text-gray-600">
-                    <Phone size={20} className="mr-2" />
-                    <span>{stall.stallOwner.phoneNumber}</span>
-                  </div>
-                  
-                  {stall.averageRating > 0 && (
-                    <div className="flex items-center text-yellow-500">
-                      <Star size={20} className="mr-1" />
-                      <span className="font-medium">{stall.averageRating}</span>
-                      <span className="text-gray-500 ml-1">({stall.totalReviews} reviews)</span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Payment Information */}
-                {stall.stallOwner.paymentMode === 'MPESA' && (
-                  <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
-                    <h4 className="font-medium text-green-800 mb-2">Payment Information</h4>
-                    <div className="text-sm text-green-700">
-                      <p className="mb-1"><strong>Payment Mode:</strong> M-Pesa</p>
-                      {stall.stallOwner.tillNumber ? (
-                        <div className="flex items-center space-x-2">
-                          <span><strong>M-Pesa Till:</strong> {stall.stallOwner.tillNumber}</span>
-                          <button
-                            onClick={() => copyTill(stall.stallOwner.tillNumber!)}
-                            className="flex items-center text-green-600 hover:text-green-800 transition-colors"
-                            title="Copy till number"
-                          >
-                            {copiedTill ? <Check size={16} /> : <Copy size={16} />}
-                          </button>
-                        </div>
-                      ) : stall.stallOwner.mpesaNumber ? (
-                        <div className="flex items-center space-x-2">
-                          <span><strong>M-Pesa Number:</strong> {stall.stallOwner.mpesaNumber}</span>
-                          <button
-                            onClick={() => copyTill(stall.stallOwner.mpesaNumber!)}
-                            className="flex items-center text-green-600 hover:text-green-800 transition-colors"
-                            title="Copy number"
-                          >
-                            {copiedTill ? <Check size={16} /> : <Copy size={16} />}
-                          </button>
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
-                )}
-                
-                <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
-                  stall.isActive 
-                    ? 'bg-green-100 text-green-800' 
-                    : 'bg-red-100 text-red-800'
-                }`}>
-                  {stall.isActive ? 'Open' : 'Closed'}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Menu Items */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {stall.menuItems.map((item) => (
-              <div key={item.id} className="bg-white rounded-lg shadow-md p-6">
-                <div className="flex justify-between items-start mb-4">
-                  <div className="flex-1">
-                    <h3 className="text-xl font-semibold text-gray-900 mb-2">{item.name}</h3>
-                    {item.description && (
-                      <p className="text-gray-600 text-sm mb-3">{item.description}</p>
-                    )}
-                    <p className="text-2xl font-bold text-green-600">KES {item.price}</p>
-                  </div>
-                </div>
-                
-                <div className="flex items-center justify-between">
-                  <span className={`px-2 py-1 rounded-full text-xs ${
-                    item.isAvailable 
-                      ? 'bg-green-100 text-green-800' 
-                      : 'bg-red-100 text-red-800'
-                  }`}>
-                    {item.isAvailable ? 'Available' : 'Unavailable'}
-                  </span>
-                  
-                  {item.isAvailable && (
-                    <button
-                      onClick={() => addToCart(item)}
-                      className="btn-primary flex items-center"
-                    >
-                      <Plus size={16} className="mr-1" />
-                      Add to Cart
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
+          )}
+          {/* Back button */}
+          <Link
+            href="/"
+            className="absolute top-10 left-4 w-10 h-10 bg-surface/80 backdrop-blur-sm rounded-full flex items-center justify-center shadow-soft"
+          >
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <path d="M11 14L6 9l5-5" stroke="#2D2823" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </Link>
         </div>
 
-        {/* Order Modal */}
-        {showOrderModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-lg p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
-              <h3 className="text-xl font-semibold text-gray-900 mb-6">Place Your Order</h3>
-              
-              {/* Cart Items */}
-              <div className="mb-6">
-                <h4 className="font-medium text-gray-900 mb-3">Your Order</h4>
-                {cart.map((item) => (
-                  <div key={item.menuItem.id} className="flex items-center justify-between py-2 border-b">
-                    <div className="flex-1">
-                      <p className="font-medium">{item.menuItem.name}</p>
-                      <p className="text-sm text-gray-600">KES {item.menuItem.price} each</p>
+        {/* Stall info bar */}
+        <div className="px-4 py-4 bg-surface shadow-soft">
+          <div className="flex items-start justify-between">
+            <div>
+              <h1 className="font-heading text-app-text text-2xl leading-tight">{stall.name}</h1>
+              {stall.description && (
+                <p className="font-body text-muted text-sm mt-1 line-clamp-2">{stall.description}</p>
+              )}
+            </div>
+            <span className={`ml-3 flex-shrink-0 px-3 py-1 rounded-pill text-xs font-body font-medium ${stall.isActive ? 'bg-primary/10 text-primary' : 'bg-accent/10 text-accent'}`}>
+              {stall.isActive ? 'Open' : 'Closed'}
+            </span>
+          </div>
+          <div className="flex items-center gap-4 mt-2">
+            {stall.averageRating > 0 && (
+              <span className="flex items-center gap-1">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="#D96C4E"><path d="M7 1l1.5 3.5L12 5l-2.5 2.5.5 3.5L7 9.5 4 11l.5-3.5L2 5l3.5-.5L7 1z"/></svg>
+                <span className="font-body text-app-text font-medium text-sm">{stall.averageRating.toFixed(1)}</span>
+                <span className="font-body text-muted text-sm">({stall.totalReviews})</span>
+              </span>
+            )}
+            <span className="flex items-center gap-1 text-muted text-sm font-body">
+              <Phone size={13} />
+              {stall.stallOwner.phoneNumber}
+            </span>
+          </div>
+
+          {/* Payment info */}
+          {stall.stallOwner.paymentMode === 'MPESA' && (stall.stallOwner.tillNumber || stall.stallOwner.mpesaNumber) && (
+            <div className="mt-3 bg-primary/5 rounded-card p-3 flex items-center justify-between">
+              <div>
+                <p className="font-body text-xs text-muted">Pay via M-Pesa</p>
+                <p className="font-body font-medium text-app-text text-sm">
+                  {stall.stallOwner.tillNumber ? `Till: ${stall.stallOwner.tillNumber}` : `Number: ${stall.stallOwner.mpesaNumber}`}
+                </p>
+              </div>
+              <button
+                onClick={() => copyTill(stall.stallOwner.tillNumber || stall.stallOwner.mpesaNumber || '')}
+                className="text-primary"
+              >
+                {copiedTill ? <Check size={16} /> : <Copy size={16} />}
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Menu */}
+        <div className="px-4 pt-4">
+          {availableItems.length > 0 && (
+            <>
+              <h2 className="font-heading text-app-text text-lg mb-1">Menu</h2>
+              <div className="bg-surface rounded-card shadow-soft px-4">
+                {availableItems.map(item => (
+                  <MenuItemRow
+                    key={item.id}
+                    name={item.name}
+                    description={item.description}
+                    price={item.price}
+                    image={item.image}
+                    isAvailable={item.isAvailable}
+                    onClick={() => setSelectedItem(item)}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+
+          {unavailableItems.length > 0 && (
+            <div className="mt-4">
+              <h2 className="font-heading text-app-text text-lg mb-1 opacity-50">Sold Out Today</h2>
+              <div className="bg-surface rounded-card shadow-soft px-4 opacity-50">
+                {unavailableItems.map(item => (
+                  <MenuItemRow
+                    key={item.id}
+                    name={item.name}
+                    description={item.description}
+                    price={item.price}
+                    image={item.image}
+                    isAvailable={false}
+                    onClick={() => {}}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Item customization sheet */}
+      <CustomizationSheet
+        item={selectedItem}
+        onClose={() => setSelectedItem(null)}
+        onAdd={addToCart}
+      />
+
+      {/* Floating basket */}
+      <FloatingBasketButton
+        itemCount={itemCount}
+        total={subtotal}
+        onClick={() => setShowCheckout(true)}
+      />
+
+      {/* Checkout bottom sheet */}
+      {showCheckout && (
+        <>
+          <div className="fixed inset-0 z-40 bg-app-text/30 backdrop-blur-sm" onClick={() => setShowCheckout(false)} />
+          <div className="fixed bottom-0 left-0 right-0 z-50 bg-surface rounded-t-[32px] shadow-soft max-h-[92vh] overflow-y-auto">
+            <div className="flex justify-center pt-3 pb-1 sticky top-0 bg-surface z-10">
+              <div className="w-10 h-1 rounded-pill bg-muted/40" />
+            </div>
+
+            <div className="px-5 pb-10">
+              <h2 className="font-heading text-app-text text-2xl mb-4">Your Order</h2>
+
+              {/* Cart items */}
+              <div className="bg-background rounded-card p-4 mb-4">
+                {cart.map(c => (
+                  <div key={c.menuItem.id} className="flex items-center justify-between py-2 border-b border-muted/20 last:border-0">
+                    <div className="flex-1 min-w-0 mr-3">
+                      <p className="font-body font-medium text-app-text text-sm leading-snug">{c.menuItem.name}</p>
+                      <p className="font-body text-muted text-xs">KES {c.menuItem.price} each</p>
                     </div>
-                    <div className="flex items-center space-x-2">
-                      <button
-                        onClick={() => updateQuantity(item.menuItem.id, item.quantity - 1)}
-                        className="p-1 rounded-full hover:bg-gray-100"
-                      >
-                        <Minus size={16} />
-                      </button>
-                      <span className="w-8 text-center">{item.quantity}</span>
-                      <button
-                        onClick={() => updateQuantity(item.menuItem.id, item.quantity + 1)}
-                        className="p-1 rounded-full hover:bg-gray-100"
-                      >
-                        <Plus size={16} />
-                      </button>
-                    </div>
+                    <QuantityStepper value={c.quantity} onChange={qty => updateQty(c.menuItem.id, qty)} />
                   </div>
                 ))}
-                
-                <div className="mt-4 pt-4 border-t">
-                  <div className="flex justify-between text-lg font-semibold">
-                    <span>Total:</span>
-                    <span>KES {getOrderTotal()}</span>
-                  </div>
-                  <p className="text-sm text-gray-600">
-                    (Includes KES {getDeliveryFee()} {deliveryTier === 'FAST' ? 'fast' : 'standard'} delivery fee
-                    {deliveryFeeNote ? ` — ${deliveryFeeNote}` : ''})
-                  </p>
+                <div className="pt-3 mt-1 flex justify-between font-body font-medium text-sm text-app-text">
+                  <span>Subtotal</span><span>KES {subtotal}</span>
                 </div>
               </div>
 
-              {/* Delivery Speed Selection */}
-              <div className="mb-6">
-                <h4 className="font-medium text-gray-900 mb-3">Delivery Speed</h4>
-                <div className="space-y-2">
-                  <label className={`flex items-start space-x-3 p-3 border-2 rounded-lg cursor-pointer transition-colors ${deliveryTier === 'FAST' ? 'border-green-500 bg-green-50' : 'border-gray-200 hover:border-gray-300'}`}>
-                    <input
-                      type="radio"
-                      name="deliveryTier"
-                      value="FAST"
-                      checked={deliveryTier === 'FAST'}
-                      onChange={() => setDeliveryTier('FAST')}
-                      className="mt-0.5"
-                    />
-                    <div>
-                      <p className="font-medium text-gray-900">Fast Delivery — KES {fastDeliveryFee}</p>
-                      <p className="text-sm text-gray-500">Dedicated delivery person, delivered ASAP</p>
-                    </div>
-                  </label>
-                  <label className={`flex items-start space-x-3 p-3 border-2 rounded-lg cursor-pointer transition-colors ${deliveryTier === 'SLOW' ? 'border-green-500 bg-green-50' : 'border-gray-200 hover:border-gray-300'}`}>
-                    <input
-                      type="radio"
-                      name="deliveryTier"
-                      value="SLOW"
-                      checked={deliveryTier === 'SLOW'}
-                      onChange={() => setDeliveryTier('SLOW')}
-                      className="mt-0.5"
-                    />
-                    <div>
-                      <p className="font-medium text-gray-900">Standard Delivery — KES {slowDeliveryFee}</p>
-                      <p className="text-sm text-gray-500">Shared delivery person, may take a little longer</p>
-                    </div>
-                  </label>
+              {/* Delivery tier */}
+              <div className="mb-4">
+                <h3 className="font-heading text-app-text text-base mb-2">Delivery Speed</h3>
+                <div className="flex gap-2">
+                  {(['FAST', 'SLOW'] as const).map(tier => (
+                    <button
+                      key={tier}
+                      onClick={() => setDeliveryTier(tier)}
+                      className={`flex-1 py-3 px-4 rounded-card border-2 text-left transition-colors ${deliveryTier === tier ? 'border-primary bg-primary/5' : 'border-muted/30 bg-surface'}`}
+                    >
+                      <p className="font-body font-medium text-app-text text-sm">{tier === 'FAST' ? 'Fast' : 'Standard'}</p>
+                      <p className="font-heading text-primary text-sm font-semibold">KES {tier === 'FAST' ? fastDeliveryFee : slowDeliveryFee}</p>
+                    </button>
+                  ))}
                 </div>
+                {deliveryFeeNote && <p className="font-body text-xs text-muted mt-1">{deliveryFeeNote}</p>}
               </div>
 
-              {/* Payment Method Selection */}
-              {stall && stall.stallOwner.paymentMode === 'MPESA' && (
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-                  <h4 className="font-medium text-blue-800 mb-3">Payment Method</h4>
-                  <div className="space-y-3">
-                    {stkPushEnabled && (
-                      <label className="flex items-center">
-                        <input
-                          type="radio"
-                          name="paymentMethod"
-                          value="STK_PUSH"
-                          checked={orderForm.paymentMethod === 'STK_PUSH'}
-                          onChange={(e) => setOrderForm({...orderForm, paymentMethod: e.target.value})}
-                          className="mr-2"
-                        />
-                        <span className="text-sm text-blue-700">
-                          <strong>STK Push</strong> - We'll send a payment request to your phone
-                        </span>
-                      </label>
-                    )}
-                    <label className="flex items-center">
-                      <input
-                        type="radio"
-                        name="paymentMethod"
-                        value="MANUAL"
-                        checked={orderForm.paymentMethod === 'MANUAL'}
-                        onChange={(e) => setOrderForm({...orderForm, paymentMethod: e.target.value})}
-                        className="mr-2"
-                      />
-                      <span className="text-sm text-blue-700">
-                        <strong>Manual Payment</strong> - Pay via M-Pesa and enter your name below
-                      </span>
-                    </label>
+              {/* Order total */}
+              <div className="flex justify-between items-center mb-5 bg-background rounded-card px-4 py-3">
+                <span className="font-heading text-app-text text-base">Total</span>
+                <span className="font-heading text-primary text-xl font-semibold">KES {total}</span>
+              </div>
+
+              {/* Order form */}
+              <form onSubmit={handleOrder} className="space-y-3">
+                {[
+                  { label: 'Your Name', key: 'customerName', placeholder: 'Full name', type: 'text', required: true },
+                  { label: 'Phone Number', key: 'customerPhone', placeholder: '07XX XXX XXX', type: 'tel', required: true },
+                  { label: 'Delivery Location', key: 'deliveryLocation', placeholder: 'e.g. Chiromo, Hall 9', type: 'text', required: true },
+                  { label: 'Room Number', key: 'roomNumber', placeholder: 'Optional', type: 'text', required: false },
+                ].map(f => (
+                  <div key={f.key}>
+                    <label className="font-body text-xs text-muted block mb-1">{f.label}{f.required && ' *'}</label>
+                    <input
+                      type={f.type}
+                      required={f.required}
+                      placeholder={f.placeholder}
+                      value={(orderForm as any)[f.key]}
+                      onChange={e => setOrderForm(prev => ({ ...prev, [f.key]: e.target.value }))}
+                      className="w-full h-11 px-4 bg-background rounded-card border border-muted/40 font-body text-sm text-app-text placeholder-muted focus:outline-none focus:border-primary transition-colors"
+                    />
                   </div>
+                ))}
 
-                  {orderForm.paymentMethod === 'MANUAL' && (
-                    <div className="mt-3 text-sm text-blue-700">
-                      <p className="font-medium mb-1">Pay KES {getOrderTotal()} to:</p>
-                      {stall.stallOwner.tillNumber ? (
-                        <div className="flex items-center space-x-2">
-                          <span><strong>M-Pesa Till:</strong> {stall.stallOwner.tillNumber}</span>
-                          <button
-                            type="button"
-                            onClick={() => copyTill(stall.stallOwner.tillNumber!)}
-                            className="flex items-center text-blue-600 hover:text-blue-800 transition-colors"
-                            title="Copy till number"
-                          >
-                            {copiedTill ? <Check size={16} /> : <Copy size={16} />}
-                          </button>
-                          {copiedTill && <span className="text-xs text-green-600">Copied!</span>}
-                        </div>
-                      ) : stall.stallOwner.mpesaNumber ? (
-                        <div className="flex items-center space-x-2">
-                          <span><strong>M-Pesa Number:</strong> {stall.stallOwner.mpesaNumber}</span>
-                          <button
-                            type="button"
-                            onClick={() => copyTill(stall.stallOwner.mpesaNumber!)}
-                            className="flex items-center text-blue-600 hover:text-blue-800 transition-colors"
-                            title="Copy number"
-                          >
-                            {copiedTill ? <Check size={16} /> : <Copy size={16} />}
-                          </button>
-                          {copiedTill && <span className="text-xs text-green-600">Copied!</span>}
-                        </div>
-                      ) : null}
-                      <p className="mt-2 text-xs">Enter the name on your M-Pesa account below so the stall owner can verify your payment.</p>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Order Form */}
-              <form onSubmit={handleOrder} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Your Name *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={orderForm.customerName}
-                    onChange={(e) => setOrderForm({...orderForm, customerName: e.target.value})}
-                    className="input-field"
-                    placeholder="Enter your full name"
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Phone Number *
-                  </label>
-                  <input
-                    type="tel"
-                    required
-                    value={orderForm.customerPhone}
-                    onChange={(e) => setOrderForm({...orderForm, customerPhone: e.target.value})}
-                    className="input-field"
-                    placeholder="Enter your phone number"
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Delivery Location *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={orderForm.deliveryLocation}
-                    onChange={(e) => setOrderForm({...orderForm, deliveryLocation: e.target.value})}
-                    className="input-field"
-                    placeholder="e.g., Hostel 5, Room 201"
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Room Number
-                  </label>
-                  <input
-                    type="text"
-                    value={orderForm.roomNumber}
-                    onChange={(e) => setOrderForm({...orderForm, roomNumber: e.target.value})}
-                    className="input-field"
-                    placeholder="Room number (optional)"
-                  />
-                </div>
-
-                {/* M-Pesa Payer Name - Only for manual payments */}
-                {stall && stall.stallOwner.paymentMode === 'MPESA' && orderForm.paymentMethod === 'MANUAL' && (
+                {/* Payment method */}
+                {stall.stallOwner.paymentMode === 'MPESA' && (
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      M-Pesa Paying Name *
-                    </label>
+                    <label className="font-body text-xs text-muted block mb-2">Payment Method *</label>
+                    <div className="space-y-2">
+                      {stkPushEnabled && (
+                        <label className="flex items-center gap-3 bg-background rounded-card px-4 py-3 cursor-pointer">
+                          <input type="radio" name="pm" value="STK_PUSH" checked={orderForm.paymentMethod === 'STK_PUSH'} onChange={() => setOrderForm(p => ({ ...p, paymentMethod: 'STK_PUSH' }))} className="accent-primary" />
+                          <div>
+                            <p className="font-body text-sm font-medium text-app-text">STK Push</p>
+                            <p className="font-body text-xs text-muted">We send a payment request to your phone</p>
+                          </div>
+                        </label>
+                      )}
+                      <label className="flex items-center gap-3 bg-background rounded-card px-4 py-3 cursor-pointer">
+                        <input type="radio" name="pm" value="MANUAL" checked={orderForm.paymentMethod === 'MANUAL'} onChange={() => setOrderForm(p => ({ ...p, paymentMethod: 'MANUAL' }))} className="accent-primary" />
+                        <div>
+                          <p className="font-body text-sm font-medium text-app-text">Manual M-Pesa</p>
+                          <p className="font-body text-xs text-muted">Pay and enter your M-Pesa name below</p>
+                        </div>
+                      </label>
+                    </div>
+                  </div>
+                )}
+
+                {stall.stallOwner.paymentMode === 'MPESA' && orderForm.paymentMethod === 'MANUAL' && (
+                  <div>
+                    <label className="font-body text-xs text-muted block mb-1">M-Pesa Paying Name *</label>
                     <input
                       type="text"
                       required
-                      value={orderForm.mpesaPayerName}
-                      onChange={(e) => setOrderForm({...orderForm, mpesaPayerName: e.target.value})}
-                      className="input-field"
                       placeholder="e.g. JOHN DOE"
+                      value={orderForm.mpesaPayerName}
+                      onChange={e => setOrderForm(p => ({ ...p, mpesaPayerName: e.target.value }))}
+                      className="w-full h-11 px-4 bg-background rounded-card border border-muted/40 font-body text-sm text-app-text placeholder-muted focus:outline-none focus:border-primary"
                     />
-                    <p className="text-xs text-gray-500 mt-1">
-                      Enter the name on your M-Pesa account exactly as it appears on the payment confirmation
-                    </p>
+                    <p className="font-body text-xs text-muted mt-1">Exactly as it appears in your M-Pesa confirmation</p>
                   </div>
                 )}
-                
-                {/* Buyer T&C */}
-                <div className="pt-2">
-                  <label className="flex items-start space-x-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      required
-                      checked={buyerTermsAccepted}
-                      onChange={(e) => setBuyerTermsAccepted(e.target.checked)}
-                      className="mt-0.5"
-                    />
-                    <span className="text-sm text-gray-600">
-                      I agree to the{' '}
-                      <button
-                        type="button"
-                        onClick={() => setShowBuyerTerms(true)}
-                        className="text-green-600 underline hover:text-green-700"
-                      >
-                        Buyer Terms & Conditions
-                      </button>
-                    </span>
-                  </label>
-                </div>
 
-                <div className="flex space-x-3 pt-4">
-                  <button
-                    type="button"
-                    onClick={() => setShowOrderModal(false)}
-                    className="flex-1 btn-secondary"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={!buyerTermsAccepted}
-                    className="flex-1 btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Place Order
-                  </button>
-                </div>
+                {/* T&C */}
+                <label className="flex items-start gap-3 cursor-pointer pt-1">
+                  <input
+                    type="checkbox"
+                    required
+                    checked={buyerTermsAccepted}
+                    onChange={e => setBuyerTermsAccepted(e.target.checked)}
+                    className="mt-0.5 accent-primary"
+                  />
+                  <span className="font-body text-sm text-muted">
+                    I agree — delivery fees are non-refundable once a runner is assigned.
+                  </span>
+                </label>
+
+                {/* Submit */}
+                <button
+                  type="submit"
+                  disabled={!buyerTermsAccepted || submitting}
+                  className="w-full h-14 bg-primary text-surface rounded-button font-body font-medium text-base flex items-center justify-center gap-2 disabled:opacity-50 active:scale-[0.98] transition-transform mt-2"
+                >
+                  {submitting ? (
+                    <svg className="animate-spin w-5 h-5" viewBox="0 0 24 24" fill="none">
+                      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="40 60"/>
+                    </svg>
+                  ) : (
+                    <>
+                      <span>Pay KES {total} via M-Pesa</span>
+                    </>
+                  )}
+                </button>
               </form>
-
-              {/* Buyer T&C Modal */}
-              {showBuyerTerms && (
-                <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-60">
-                  <div className="bg-white rounded-lg p-6 w-full max-w-lg max-h-[80vh] overflow-y-auto">
-                    <h3 className="text-lg font-semibold mb-4">Buyer Terms & Conditions</h3>
-                    <div className="text-sm text-gray-700 space-y-3">
-                      <p><strong>1. Order Placement.</strong> By placing an order you confirm that the details you provide (name, phone, delivery location) are accurate.</p>
-                      <p><strong>2. Payment.</strong> Payment must be completed as instructed. Orders not paid within a reasonable time may be cancelled by the stall owner.</p>
-                      <p><strong>3. Delivery.</strong> Delivery fees are non-refundable once a delivery person has been assigned. Delivery times are estimates and may vary.</p>
-                      <p><strong>4. Refunds.</strong> Refund requests must be made directly to the stall owner. Klabu is not liable for order quality disputes.</p>
-                      <p><strong>5. Privacy.</strong> Your contact details are shared with the stall owner and the assigned delivery person solely for order fulfillment.</p>
-                      <p><strong>6. Conduct.</strong> You agree to treat delivery persons and stall staff with respect.</p>
-                    </div>
-                    <button
-                      onClick={() => { setBuyerTermsAccepted(true); setShowBuyerTerms(false); }}
-                      className="mt-6 w-full btn-primary"
-                    >
-                      I Accept
-                    </button>
-                    <button
-                      onClick={() => setShowBuyerTerms(false)}
-                      className="mt-2 w-full btn-secondary"
-                    >
-                      Close
-                    </button>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
-        )}
-      </div>
+        </>
+      )}
+
+      {/* STK Push overlay (after STK_PUSH submit) */}
+      <StkPushOverlay
+        open={stkOverlay.open}
+        orderId={stkOverlay.orderId}
+        phoneNumber={stkOverlay.phone}
+        onSuccess={handleStkSuccess}
+        onClose={handleStkClose}
+      />
+
+      {/* Manual payment success sheet */}
+      <OrderSuccessSheet
+        open={successSheet.open}
+        orderId={successSheet.orderId}
+        total={successSheet.total}
+        paymentMethod={successSheet.paymentMethod}
+        onClose={() => setSuccessSheet({ open: false, orderId: '', total: 0, paymentMethod: 'MANUAL' })}
+      />
     </>
   );
 }
@@ -692,7 +499,7 @@ export const getServerSideProps: GetServerSideProps = async ({ params }) => {
         fastDeliveryFee: deliveryConfig.fastDeliveryFee ?? 50,
         slowDeliveryFee: deliveryConfig.slowDeliveryFee ?? 30,
         deliveryFeeNote: deliveryConfig.deliveryFeeNote ?? null,
-      }
+      },
     };
   } catch {
     return { notFound: true };

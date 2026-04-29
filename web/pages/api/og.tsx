@@ -18,7 +18,7 @@ export default function handler(req: NextRequest) {
           justifyContent: 'space-between',
           width: '100%',
           height: '100%',
-          backgroundColor: '#16a34a',
+          backgroundColor: '#2E5C3E',
           padding: '60px',
           fontFamily: 'sans-serif',
         }}
@@ -28,7 +28,7 @@ export default function handler(req: NextRequest) {
           <div
             style={{
               backgroundColor: 'white',
-              color: '#16a34a',
+              color: '#2E5C3E',
               fontSize: 28,
               fontWeight: 700,
               padding: '8px 20px',

@@ -47,33 +47,33 @@ export default function TermsAccept() {
   return (
     <>
       <SEO title="Terms & Conditions" description="Please accept the updated Terms & Conditions to continue." canonical="/terms-accept" />
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-lg shadow-lg p-8 w-full max-w-2xl">
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">Updated Terms & Conditions</h1>
-          <p className="text-gray-600 mb-6">
-            Our Terms & Conditions have been updated. Please read and accept them to continue using Klabu as a {roleLabel}.
+      <div className="min-h-screen bg-background flex items-center justify-center p-4 font-body">
+        <div className="bg-surface rounded-card shadow-soft border border-muted/20 p-8 w-full max-w-2xl">
+          <h1 className="font-heading text-2xl text-app-text mb-2">Updated Terms &amp; Conditions</h1>
+          <p className="text-muted mb-6">
+            Our Terms &amp; Conditions have been updated. Please read and accept them to continue using Klabu as a {roleLabel}.
           </p>
 
-          <div className="border border-gray-200 rounded-lg p-4 max-h-80 overflow-y-auto mb-6 bg-gray-50">
-            <pre className="text-sm text-gray-700 whitespace-pre-wrap font-sans">{termsText}</pre>
+          <div className="border border-muted/30 rounded-card p-4 max-h-80 overflow-y-auto mb-6 bg-background">
+            <pre className="text-sm text-app-text whitespace-pre-wrap font-body">{termsText}</pre>
           </div>
 
-          <label className="flex items-start space-x-2 cursor-pointer mb-6">
+          <label className="flex items-start gap-2 cursor-pointer mb-6">
             <input
               type="checkbox"
               checked={accepted}
               onChange={(e) => setAccepted(e.target.checked)}
-              className="mt-0.5"
+              className="mt-0.5 accent-primary"
             />
-            <span className="text-sm text-gray-700">
-              I have read and agree to the {roleLabel} Terms & Conditions
+            <span className="text-sm text-app-text">
+              I have read and agree to the {roleLabel} Terms &amp; Conditions
             </span>
           </label>
 
           <button
             onClick={handleAccept}
             disabled={!accepted || submitting}
-            className="w-full bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="w-full bg-primary text-surface py-3 rounded-button hover:bg-primary/90 font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {submitting ? 'Saving...' : 'Accept & Continue'}
           </button>

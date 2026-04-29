@@ -42,6 +42,10 @@ export default function Login() {
         router.push('/dashboard/delivery');
       } else if (response.data.user.role === 'ADMIN') {
         router.push('/dashboard/admin');
+      } else if (response.data.user.role === 'STUDENT' || response.data.user.role === 'CUSTOMER') {
+        router.push('/orders');
+      } else {
+        router.push('/');
       }
 
     } catch (error: any) {
@@ -94,24 +98,24 @@ export default function Login() {
         noindex={true}
       />
 
-      <div className="min-h-screen bg-gradient-to-br from-green-50 via-white to-emerald-50 flex items-center justify-center px-4 py-12">
+      <div className="min-h-screen bg-background flex items-center justify-center px-4 py-12 font-body">
         <div className="w-full max-w-md">
           {/* Brand */}
           <div className="text-center mb-8">
             <Link href="/" className="inline-block">
-              <span className="text-4xl font-extrabold text-green-600 tracking-tight">Klabu</span>
+              <span className="font-heading text-4xl text-primary tracking-tight">Klabu</span>
             </Link>
-            <h2 className="mt-3 text-2xl font-bold text-gray-800">Welcome back</h2>
-            <p className="mt-1 text-sm text-gray-500">Sign in to continue to your dashboard</p>
+            <h2 className="mt-3 font-heading text-2xl text-app-text">Welcome back</h2>
+            <p className="mt-1 text-sm text-muted">Sign in to continue to your dashboard</p>
           </div>
 
           {/* Card */}
-          <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8">
+          <div className="bg-surface rounded-card shadow-soft border border-muted/20 p-8">
 
             {pendingReset && (
-              <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-xl">
-                <p className="text-sm font-semibold text-green-800 mb-1">Admin approved your password reset</p>
-                <p className="text-xs text-green-600 mb-3">Set a new password for <strong>{formData.email}</strong></p>
+              <div className="mb-6 p-4 bg-accent/10 border border-accent/30 rounded-card">
+                <p className="text-sm font-semibold text-accent mb-1">Admin approved your password reset</p>
+                <p className="text-xs text-muted mb-3">Set a new password for <strong className="text-app-text">{formData.email}</strong></p>
                 <form onSubmit={handleSetNewPassword} className="flex gap-2">
                   <input
                     type="password"
@@ -119,12 +123,12 @@ export default function Login() {
                     value={newPassword}
                     onChange={e => setNewPassword(e.target.value)}
                     placeholder="New password (min. 6 chars)"
-                    className="flex-1 border border-green-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent"
+                    className="flex-1 bg-background border border-muted/40 rounded-button px-3 py-2 text-sm text-app-text placeholder-muted focus:outline-none focus:border-primary transition-colors"
                   />
                   <button
                     type="submit"
                     disabled={settingPassword}
-                    className="bg-green-600 hover:bg-green-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
+                    className="bg-primary hover:bg-primary/90 text-surface text-sm font-semibold px-4 py-2 rounded-button transition-colors disabled:opacity-50"
                   >
                     {settingPassword ? '...' : 'Save'}
                   </button>
@@ -134,7 +138,7 @@ export default function Login() {
 
             <form className="space-y-5" onSubmit={handleSubmit}>
               <div>
-                <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1.5">
+                <label htmlFor="email" className="block text-sm font-medium text-app-text mb-1.5">
                   Email address
                 </label>
                 <input
@@ -145,17 +149,17 @@ export default function Login() {
                   required
                   value={formData.email}
                   onChange={(e) => setFormData({...formData, email: e.target.value})}
-                  className="w-full px-4 py-3 rounded-xl border border-gray-200 text-gray-900 placeholder-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all"
+                  className="w-full px-4 py-3 rounded-button bg-background border border-muted/40 text-app-text placeholder-muted text-sm focus:outline-none focus:border-primary transition-colors"
                   placeholder="you@example.com"
                 />
               </div>
 
               <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+                  <label htmlFor="password" className="block text-sm font-medium text-app-text">
                     Password
                   </label>
-                  <Link href="/forgot-password" className="text-xs text-green-600 hover:text-green-500 font-medium">
+                  <Link href="/forgot-password" className="text-xs text-primary hover:text-primary/80 font-medium">
                     Forgot password?
                   </Link>
                 </div>
@@ -168,12 +172,12 @@ export default function Login() {
                     required
                     value={formData.password}
                     onChange={(e) => setFormData({...formData, password: e.target.value})}
-                    className="w-full px-4 py-3 pr-11 rounded-xl border border-gray-200 text-gray-900 placeholder-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all"
+                    className="w-full px-4 py-3 pr-11 rounded-button bg-background border border-muted/40 text-app-text placeholder-muted text-sm focus:outline-none focus:border-primary transition-colors"
                     placeholder="Enter your password"
                   />
                   <button
                     type="button"
-                    className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-gray-400 hover:text-gray-600 transition-colors"
+                    className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-muted hover:text-app-text transition-colors"
                     onClick={() => setShowPassword(!showPassword)}
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -184,11 +188,11 @@ export default function Login() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-3 px-4 bg-green-600 hover:bg-green-700 active:bg-green-800 text-white font-semibold rounded-xl transition-all duration-150 flex items-center justify-center gap-2 shadow-sm disabled:opacity-60 disabled:cursor-not-allowed mt-2"
+                className="w-full py-3 px-4 bg-primary hover:bg-primary/90 active:bg-primary/80 text-surface font-semibold rounded-button transition-colors duration-150 flex items-center justify-center gap-2 shadow-soft disabled:opacity-60 disabled:cursor-not-allowed mt-2"
               >
                 {loading ? (
                   <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-surface border-t-transparent" />
                     Signing in...
                   </>
                 ) : (
@@ -199,6 +203,13 @@ export default function Login() {
                 )}
               </button>
             </form>
+
+            <p className="text-center text-sm text-muted mt-6">
+              New here?{' '}
+              <Link href="/register" className="text-primary hover:text-primary/80 font-medium">
+                Create an account
+              </Link>
+            </p>
           </div>
         </div>
       </div>

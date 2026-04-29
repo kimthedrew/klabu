@@ -1,17 +1,25 @@
 import { useState, useEffect } from 'react';
+import axios from 'axios';
+import toast from 'react-hot-toast';
 import Link from 'next/link';
 import SEO from '../components/SEO';
-import { Search, MapPin, Clock, Star, Phone, ShoppingCart } from 'lucide-react';
-import axios from 'axios';
+import WavyHeader from '../components/WavyHeader';
+import StallCard, { StallCardSkeleton } from '../components/StallCard';
+import CategoryPill from '../components/CategoryPill';
 import { API_BASE_URL } from '../lib/config';
-import toast from 'react-hot-toast';
 
-interface Stall {
+interface MenuItem {
+  id: string;
+  name: string;
+  price: number;
+  isAvailable: boolean;
+}
+
+interface StallOwner {
   id: string;
   fullName: string;
   businessName?: string;
   phoneNumber: string;
-  photo?: string;
   stallPhoto?: string;
   stall?: {
     id: string;
@@ -23,265 +31,139 @@ interface Stall {
   };
 }
 
-interface MenuItem {
-  id: string;
-  name: string;
-  description?: string;
-  price: number;
-  image?: string;
-  isAvailable: boolean;
+const CATEGORIES = ['All', 'Chapati', 'Rice', 'Ugali', 'Chicken', 'Nyama', 'Snacks', 'Drinks'];
+
+function matchesCategory(stall: StallOwner, category: string): boolean {
+  if (category === 'All') return true;
+  return stall.stall?.menuItems.some(item =>
+    item.name.toLowerCase().includes(category.toLowerCase())
+  ) ?? false;
 }
 
+const jsonLd = [
+  {
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    name: 'Klabu',
+    url: 'https://klabu.site',
+    description: 'UON food delivery platform — order from campus stalls and get food delivered to your hostel.',
+  },
+];
+
 export default function Home() {
-  const [stalls, setStalls] = useState<Stall[]>([]);
+  const [stalls, setStalls] = useState<StallOwner[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [foodSearch, setFoodSearch] = useState('');
+  const [category, setCategory] = useState('All');
+  const [search, setSearch] = useState('');
 
   useEffect(() => {
-    fetchStalls();
+    axios.get(`${API_BASE_URL}/stalls`)
+      .then(res => setStalls(res.data.stalls))
+      .catch(() => toast.error('Failed to load stalls'))
+      .finally(() => setLoading(false));
   }, []);
 
-  const fetchStalls = async () => {
-    try {
-      const response = await axios.get(`${API_BASE_URL}/stalls`);
-      setStalls(response.data.stalls);
-    } catch (error) {
-      toast.error('Failed to load stalls');
-      console.error('Error fetching stalls:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSearch = async () => {
-    try {
-      setLoading(true);
-      const params = new URLSearchParams();
-      if (searchTerm) params.append('search', searchTerm);
-      if (foodSearch) params.append('food', foodSearch);
-      
-      const response = await axios.get(`${API_BASE_URL}/stalls?${params.toString()}`);
-      setStalls(response.data.stalls);
-    } catch (error) {
-      toast.error('Search failed');
-      console.error('Search error:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const filteredStalls = stalls.filter(stall => {
-    if (!searchTerm && !foodSearch) return true;
-    
-    const matchesStallName = !searchTerm || 
-      stall.stall?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      stall.businessName?.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesFood = !foodSearch || 
-      stall.stall?.menuItems.some(item => 
-        item.name.toLowerCase().includes(foodSearch.toLowerCase())
-      );
-    
-    return matchesStallName && matchesFood;
+  const visible = stalls.filter(s => {
+    if (!s.stall) return false;
+    const matchesCat = matchesCategory(s, category);
+    const matchesSearch = !search ||
+      s.stall.name.toLowerCase().includes(search.toLowerCase()) ||
+      s.stall.menuItems.some(i => i.name.toLowerCase().includes(search.toLowerCase()));
+    return matchesCat && matchesSearch;
   });
-
-  const jsonLd = [
-    {
-      '@context': 'https://schema.org',
-      '@type': 'WebSite',
-      name: 'Klabu',
-      url: 'https://klabu.site',
-      description: 'UON food delivery platform — order from campus stalls and get food delivered to your hostel.',
-      potentialAction: {
-        '@type': 'SearchAction',
-        target: 'https://klabu.site/?search={search_term_string}',
-        'query-input': 'required name=search_term_string',
-      },
-    },
-    {
-      '@context': 'https://schema.org',
-      '@type': 'Organization',
-      name: 'Klabu',
-      url: 'https://klabu.site',
-      description: 'Food delivery service for University of Nairobi students. Order from Klabu stalls and get meals delivered to your hostel.',
-      areaServed: {
-        '@type': 'Place',
-        name: 'University of Nairobi, Nairobi, Kenya',
-      },
-    },
-  ];
 
   return (
     <>
       <SEO
         canonical="/"
-        description="Order food from Klabu stalls at the University of Nairobi and get it delivered to your hostel. Fast, easy UON food delivery."
+        description="Order food from campus stalls at the University of Nairobi and get it delivered to your hostel."
         jsonLd={jsonLd}
       />
 
-      <div className="min-h-screen bg-gray-50">
-        {/* Header */}
-        <header className="bg-white shadow-sm border-b">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center py-4">
-              <div className="flex items-center">
-                <h1 className="text-2xl font-bold text-green-600">Klabu</h1>
-                <span className="ml-2 text-sm text-gray-500 hidden sm:inline">UON Food Delivery</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Link href="/reviews" className="bg-blue-600 text-white px-3 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center text-sm">
-                  <Star size={16} className="mr-1 sm:mr-2" />
-                  Reviews
-                </Link>
-                <Link href="/app" className="bg-green-600 text-white px-3 py-2 rounded-lg hover:bg-green-700 transition-colors text-sm">
-                  <span className="sm:hidden">Stall Owners</span>
-                  <span className="hidden sm:inline">For Stall Owners and Delivery Persons</span>
-                </Link>
-              </div>
-            </div>
-          </div>
-        </header>
-
-        {/* Hero Section */}
-        <section className="bg-gradient-to-r from-green-600 to-green-700 text-white py-16">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-4">
-              Food from Klabu, Delivered to Your Hostel
-            </h2>
-            <p className="text-base sm:text-xl mb-8 text-green-100">
-              Skip the walk to Klabu. Order from your favorite stalls and get it delivered right to your room.
-              in case of any issues, please contact the admin on +254113690898.
-            </p>
-          </div>
-        </section>
-
-        {/* Search Section */}
-        <section className="py-8 bg-white">
-          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-                <input
-                  type="text"
-                  placeholder="Search for stalls..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                />
-              </div>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-                <input
-                  type="text"
-                  placeholder="Search for food..."
-                  value={foodSearch}
-                  onChange={(e) => setFoodSearch(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                />
-              </div>
-            </div>
-            <button
-              onClick={handleSearch}
-              className="mt-4 w-full bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 transition-colors font-medium"
+      <div className="min-h-screen bg-background font-body">
+        <WavyHeader
+          greeting="What are you hungry for?"
+          rightElement={
+            <Link
+              href="/login"
+              className="flex items-center gap-1.5 bg-surface/15 hover:bg-surface/25 text-surface font-body text-sm font-medium px-3 py-1.5 rounded-pill transition-colors"
             >
-              Search Stalls & Food
-            </button>
-          </div>
-        </section>
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <circle cx="7" cy="5" r="2.5" stroke="currentColor" strokeWidth="1.3"/>
+                <path d="M2 12c0-2.2 2.2-4 5-4s5 1.8 5 4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+              </svg>
+              Login
+            </Link>
+          }
+        />
 
-        {/* Stalls Grid */}
-        <section className="py-8">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            {loading ? (
-              <div className="text-center py-12">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto"></div>
-                <p className="mt-4 text-gray-600">Loading stalls...</p>
-              </div>
-            ) : filteredStalls.length === 0 ? (
-              <div className="text-center py-12">
-                <p className="text-gray-600">No stalls found. Try adjusting your search.</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filteredStalls.map((stall) => (
-                  <StallCard key={stall.id} stall={stall} />
-                ))}
-              </div>
-            )}
-          </div>
-        </section>
-      </div>
-    </>
-  );
-}
-
-function StallCard({ stall }: { stall: Stall }) {
-  if (!stall.stall) return null;
-
-  return (
-    <Link href={`/stall/${stall.stall.id}`} className="block">
-      <div className="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow border border-gray-200 overflow-hidden">
-        {stall.stallPhoto && (
-          <div className="h-48 bg-gray-200">
-            <img
-              src={stall.stallPhoto}
-              alt={stall.stall.name}
-              className="w-full h-full object-cover"
+        {/* Search bar */}
+        <div className="px-4 pt-4 pb-2">
+          <div className="relative">
+            <svg className="absolute left-4 top-1/2 -translate-y-1/2 text-muted" width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <circle cx="6.5" cy="6.5" r="5" stroke="currentColor" strokeWidth="1.5"/>
+              <path d="M10.5 10.5L14 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+            <input
+              type="text"
+              placeholder="Search stalls or food..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full h-11 pl-10 pr-4 bg-surface rounded-pill border border-muted/40 font-body text-sm text-app-text placeholder-muted focus:outline-none focus:border-primary transition-colors"
             />
           </div>
-        )}
-        
-        <div className="p-6">
-          <div className="flex items-start justify-between mb-2">
-            <h3 className="text-xl font-semibold text-gray-900">{stall.stall.name}</h3>
-            {stall.stall.averageRating > 0 && (
-              <div className="flex items-center text-yellow-500">
-                <Star size={16} className="fill-current" />
-                <span className="ml-1 text-sm font-medium">{stall.stall.averageRating}</span>
-              </div>
-            )}
-          </div>
-          
-          <p className="text-gray-600 text-sm mb-2">{stall.fullName}</p>
-          
-          {stall.stall.description && (
-            <p className="text-gray-500 text-sm mb-4 line-clamp-2">{stall.stall.description}</p>
-          )}
-          
-          <div className="flex items-center justify-between">
-            <div className="flex items-center text-gray-500 text-sm">
-              <Phone size={16} className="mr-1" />
-              <span>{stall.phoneNumber}</span>
+        </div>
+
+        {/* Category pills */}
+        <div className="flex gap-2 px-4 py-3 overflow-x-auto scrollbar-hide">
+          {CATEGORIES.map(cat => (
+            <CategoryPill
+              key={cat}
+              label={cat}
+              active={category === cat}
+              onClick={() => setCategory(cat)}
+            />
+          ))}
+        </div>
+
+        {/* Section heading */}
+        <div className="px-4 pb-3">
+          <h2 className="font-heading text-app-text text-xl">
+            {category === 'All' ? 'Open Stalls' : `${category} spots`}
+          </h2>
+        </div>
+
+        {/* Stall list */}
+        <div className="px-4 pb-24 flex flex-col gap-4">
+          {loading ? (
+            <>
+              <StallCardSkeleton />
+              <StallCardSkeleton />
+              <StallCardSkeleton />
+            </>
+          ) : visible.length === 0 ? (
+            <div className="flex flex-col items-center py-16 text-center">
+              <span className="text-5xl mb-4">😴</span>
+              <p className="font-heading text-app-text text-lg mb-1">No stalls open right now</p>
+              <p className="font-body text-muted text-sm">Check back later or try a different category</p>
             </div>
-            
-            <div className="flex items-center text-gray-500 text-sm">
-              <span>{stall.stall.menuItems.length} items</span>
-            </div>
-          </div>
-          
-          {stall.stall.menuItems.length > 0 && (
-            <div className="mt-4">
-              <p className="text-sm text-gray-600 mb-2">Popular items:</p>
-              <div className="flex flex-wrap gap-2">
-                {stall.stall.menuItems.slice(0, 3).map((item) => (
-                  <span
-                    key={item.id}
-                    className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded"
-                  >
-                    {item.name} - KES {item.price}
-                  </span>
-                ))}
-                {stall.stall.menuItems.length > 3 && (
-                  <span className="text-xs text-gray-500">
-                    +{stall.stall.menuItems.length - 3} more
-                  </span>
-                )}
-              </div>
-            </div>
+          ) : (
+            visible.map(owner => (
+              owner.stall ? (
+                <StallCard
+                  key={owner.stall.id}
+                  id={owner.stall.id}
+                  name={owner.stall.name}
+                  coverImage={owner.stallPhoto}
+                  rating={owner.stall.averageRating > 0 ? owner.stall.averageRating : undefined}
+                  reviewCount={owner.stall.totalReviews}
+                  eta="~15 min"
+                />
+              ) : null
+            ))
           )}
         </div>
       </div>
-    </Link>
+    </>
   );
 }

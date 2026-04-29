@@ -87,54 +87,54 @@ export default function NotificationBell({ token, socket }: Props) {
   };
 
   return (
-    <div className="relative" ref={ref}>
+    <div className="relative font-body" ref={ref}>
       <button
         onClick={() => setOpen(o => !o)}
-        className="relative p-2 rounded-full hover:bg-gray-100 transition-colors"
+        className="relative p-2 rounded-pill hover:bg-background transition-colors"
         aria-label="Notifications"
       >
-        <Bell className="w-6 h-6 text-gray-600" />
+        <Bell className="w-6 h-6 text-app-text" />
         {unreadCount > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">
+          <span className="absolute -top-0.5 -right-0.5 bg-accent text-surface text-xs rounded-pill w-5 h-5 flex items-center justify-center font-bold">
             {unreadCount > 9 ? '9+' : unreadCount}
           </span>
         )}
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-2 w-screen max-w-xs sm:w-80 bg-white rounded-xl shadow-xl border border-gray-100 z-50 overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3 border-b">
-            <h3 className="font-semibold text-gray-800">Notifications</h3>
+        <div className="absolute right-0 mt-2 w-screen max-w-xs sm:w-80 bg-surface rounded-card shadow-soft border border-muted/20 z-50 overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-muted/20">
+            <h3 className="font-heading text-app-text">Notifications</h3>
             {unreadCount > 0 && (
               <button
                 onClick={markAllRead}
-                className="text-xs text-orange-500 hover:text-orange-600 font-medium"
+                className="text-xs text-primary hover:text-primary/80 font-medium"
               >
                 Mark all read
               </button>
             )}
           </div>
 
-          <div className="max-h-72 sm:max-h-96 overflow-y-auto divide-y divide-gray-50">
+          <div className="max-h-72 sm:max-h-96 overflow-y-auto divide-y divide-muted/20">
             {notifications.length === 0 ? (
-              <p className="text-center text-gray-400 text-sm py-8">No notifications yet</p>
+              <p className="text-center text-muted text-sm py-8">No notifications yet</p>
             ) : (
               notifications.map(n => (
                 <div
                   key={n.id}
                   onClick={() => !n.isRead && markRead(n.id)}
-                  className={`px-4 py-3 cursor-pointer hover:bg-gray-50 transition-colors ${
-                    !n.isRead ? 'bg-orange-50' : ''
+                  className={`px-4 py-3 cursor-pointer hover:bg-background transition-colors ${
+                    !n.isRead ? 'bg-accent/5' : ''
                   }`}
                 >
                   <div className="flex items-start gap-2">
                     {!n.isRead && (
-                      <span className="mt-1.5 w-2 h-2 rounded-full bg-orange-500 flex-shrink-0" />
+                      <span className="mt-1.5 w-2 h-2 rounded-pill bg-accent flex-shrink-0" />
                     )}
                     <div className={!n.isRead ? '' : 'ml-4'}>
-                      <p className="text-sm font-medium text-gray-800">{n.title}</p>
-                      <p className="text-xs text-gray-500 mt-0.5">{n.message}</p>
-                      <p className="text-xs text-gray-400 mt-1">{timeAgo(n.createdAt)}</p>
+                      <p className="text-sm font-medium text-app-text">{n.title}</p>
+                      <p className="text-xs text-muted mt-0.5">{n.message}</p>
+                      <p className="text-xs text-muted/70 mt-1">{timeAgo(n.createdAt)}</p>
                     </div>
                   </div>
                 </div>

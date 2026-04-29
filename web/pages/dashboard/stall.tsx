@@ -1,32 +1,19 @@
 import { useState, useEffect } from 'react';
 import Head from 'next/head';
-import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { 
-  Store, 
-  Plus, 
-  Package, 
-  Users, 
-  DollarSign, 
-  Settings, 
-  LogOut,
-  Eye,
-  Edit,
-  Trash2,
-  CheckCircle,
-  Clock,
-  XCircle,
-  Truck,
-  User,
-  Phone,
-  AlertCircle,
-  Star
-} from 'lucide-react';
+import { LogOut, Plus, Phone } from 'lucide-react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import io from 'socket.io-client';
 import { API_BASE_URL, API_URL } from '../../lib/config';
-import NotificationBell from '../../components/NotificationBell';
+
+interface MenuItem {
+  id: string;
+  name: string;
+  description?: string;
+  price: number;
+  isAvailable: boolean;
+}
 
 interface Stall {
   id: string;
@@ -34,15 +21,6 @@ interface Stall {
   description?: string;
   isActive: boolean;
   menuItems: MenuItem[];
-}
-
-interface MenuItem {
-  id: string;
-  name: string;
-  description?: string;
-  price: number;
-  image?: string;
-  isAvailable: boolean;
 }
 
 interface Order {
@@ -55,1102 +33,377 @@ interface Order {
   deliveryFee: number;
   status: string;
   paymentStatus: string;
-  paymentCode?: string;
+  mpesaPayerName?: string;
   deliveryStatus: string;
-  deliveryPerson?: {
-    id: string;
-    fullName: string;
-    phoneNumber: string;
-    rating: number;
-  };
   createdAt: string;
-  items: {
-    id: string;
-    quantity: number;
-    price: number;
-    menuItem: {
-      id: string;
-      name: string;
-      description?: string;
-    };
-  }[];
+  items: { id: string; quantity: number; price: number; menuItem: { name: string } }[];
+  deliveryPerson?: { fullName: string; phoneNumber: string };
+}
+
+type Tab = 'new' | 'prep' | 'ready';
+
+function timeAgo(date: string) {
+  const mins = Math.round((Date.now() - new Date(date).getTime()) / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  return `${Math.round(mins / 60)}h ago`;
 }
 
 export default function StallDashboard() {
+  const router = useRouter();
   const [user, setUser] = useState<any>(null);
   const [stall, setStall] = useState<Stall | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showAddMenuItem, setShowAddMenuItem] = useState(false);
-  const [showCreateStall, setShowCreateStall] = useState(false);
-  const [showEditMenuItem, setShowEditMenuItem] = useState(false);
-  const [editingMenuItem, setEditingMenuItem] = useState<MenuItem | null>(null);
-  const [newMenuItem, setNewMenuItem] = useState({
-    name: '',
-    description: '',
-    price: 0,
-    isAvailable: true
-  });
-  const [newStall, setNewStall] = useState({
-    name: '',
-    description: ''
-  });
+  const [tab, setTab] = useState<Tab>('new');
+  const [dismissing, setDismissing] = useState<Set<string>>(new Set());
+
+  // Menu management state
+  const [showAddItem, setShowAddItem] = useState(false);
+  const [newItem, setNewItem] = useState({ name: '', description: '', price: 0, isAvailable: true });
+
+  // Order detail sheet
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
-  const [showOrderModal, setShowOrderModal] = useState(false);
-  const [mpesaPayerName, setMpesaPayerName] = useState('');
-  const [showRejectModal, setShowRejectModal] = useState(false);
-  const [rejectReason, setRejectReason] = useState('');
-  const [socket, setSocket] = useState<any>(null);
-  const router = useRouter();
+  const [mpesaName, setMpesaName] = useState('');
 
   useEffect(() => {
     const token = localStorage.getItem('token');
     const userData = localStorage.getItem('user');
-    
-    if (!token || !userData) {
-      router.push('/login');
-      return;
-    }
+    if (!token || !userData) { router.push('/login'); return; }
 
-    const parsedUser = JSON.parse(userData);
-    setUser(parsedUser);
+    const parsed = JSON.parse(userData);
+    if (parsed.role !== 'STALL_OWNER') { router.push('/login'); return; }
+    setUser(parsed);
 
-    if (parsedUser.role !== 'STALL_OWNER') {
-      router.push('/login');
-      return;
-    }
+    fetchAll();
 
-    fetchStallData();
-
-    // Initialize socket connection
-    const socketConnection = io(API_URL);
-    setSocket(socketConnection);
-
-    // Join user room for personal notifications
-    socketConnection.emit('join-user', parsedUser.id);
-
-    // Join stall room for real-time order updates
-    if (parsedUser.profile?.stall?.id) {
-      socketConnection.emit('join-stall', parsedUser.profile.stall.id);
-    }
-
-    // Listen for delivery-related events
-    socketConnection.on('delivery-accepted', (data) => {
-      toast.success(`Delivery accepted by ${data.deliveryPerson.fullName}!`);
-      fetchOrders(); // Refresh orders to show updated delivery info
-    });
-
-    socketConnection.on('delivery-status-updated', (data) => {
-      toast.success(`Delivery status updated: ${data.status}`);
-      fetchOrders();
-    });
-
-    socketConnection.on('no-delivery-persons-available', (data) => {
-      toast.error('No delivery persons are currently available');
-    });
-
-    return () => {
-      socketConnection.disconnect();
-    };
+    const sock = io(API_URL);
+    sock.emit('join-user', parsed.id);
+    if (parsed.profile?.stall?.id) sock.emit('join-stall', parsed.profile.stall.id);
+    sock.on('delivery-accepted', () => { toast.success('Delivery accepted!'); fetchOrders(); });
+    sock.on('delivery-status-updated', () => fetchOrders());
+    return () => { sock.disconnect(); };
   }, []);
 
-  const fetchStallData = async () => {
+  const authHeader = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}` });
+
+  const fetchAll = async () => {
     try {
-      const token = localStorage.getItem('token');
-      const response = await axios.get(`${API_BASE_URL}/auth/me`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
-      setStall(response.data.user.profile.stall);
-      fetchOrders();
-    } catch (error) {
-      console.error('Error fetching stall data:', error);
-      toast.error('Failed to load stall data');
-    } finally {
-      setLoading(false);
-    }
+      const res = await axios.get(`${API_BASE_URL}/auth/me`, { headers: authHeader() });
+      setStall(res.data.user.profile.stall);
+      await fetchOrders();
+    } catch { toast.error('Failed to load stall data'); }
+    finally { setLoading(false); }
   };
 
   const fetchOrders = async () => {
     try {
-      const token = localStorage.getItem('token');
-      console.log('Fetching orders with token:', token ? 'Present' : 'Missing');
-      
-      const response = await axios.get(`${API_BASE_URL}/orders/stall/my-orders`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
-      console.log('Orders response:', response.data);
-      setOrders(response.data.orders);
-    } catch (error: any) {
-      console.error('Error fetching orders:', error);
-      console.error('Error response:', error.response?.data);
-      toast.error('Failed to load orders');
-    }
+      const res = await axios.get(`${API_BASE_URL}/orders/stall/my-orders`, { headers: authHeader() });
+      setOrders(res.data.orders);
+    } catch { toast.error('Failed to load orders'); }
   };
 
-  const handleCreateStall = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    try {
-      const token = localStorage.getItem('token');
-      await axios.post(`${API_BASE_URL}/stalls`, newStall, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
-      toast.success('Stall created successfully');
-      setNewStall({ name: '', description: '' });
-      setShowCreateStall(false);
-      fetchStallData();
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to create stall');
-    }
-  };
-
-  const toggleStallStatus = async () => {
+  const toggleStatus = async () => {
     if (!stall) return;
-
     try {
-      const token = localStorage.getItem('token');
-      await axios.put(`${API_BASE_URL}/stalls/${stall.id}`, {
-        isActive: !stall.isActive
-      }, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
-      toast.success(`Stall ${!stall.isActive ? 'opened' : 'closed'} successfully`);
-      fetchStallData();
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to update stall status');
-    }
+      await axios.put(`${API_BASE_URL}/stalls/${stall.id}`, { isActive: !stall.isActive }, { headers: authHeader() });
+      toast.success(`Stall ${!stall.isActive ? 'opened' : 'closed'}`);
+      fetchAll();
+    } catch (err: any) { toast.error(err.response?.data?.error || 'Failed'); }
   };
 
-  const handleAddMenuItem = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!stall) {
-      toast.error('No stall found. Please create a stall first.');
+  const acceptOrder = async (order: Order) => {
+    if (!mpesaName.trim() && order.paymentStatus === 'PENDING') {
+      toast.error('Enter the M-Pesa payer name to confirm payment');
       return;
     }
-
-    console.log('Adding menu item:', newMenuItem);
-    console.log('Stall ID:', stall.id);
-
     try {
-      const token = localStorage.getItem('token');
-      console.log('Token:', token ? 'Present' : 'Missing');
-      
-      const response = await axios.post(`${API_BASE_URL}/stalls/${stall.id}/menu`, newMenuItem, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
-      console.log('Response:', response.data);
-      toast.success('Menu item added successfully');
-      setNewMenuItem({ name: '', description: '', price: 0, isAvailable: true });
-      setShowAddMenuItem(false);
-      fetchStallData();
-    } catch (error: any) {
-      console.error('Add menu item error:', error);
-      console.error('Error response:', error.response?.data);
-      toast.error(error.response?.data?.error || 'Failed to add menu item');
-    }
-  };
-
-  const handleEditClick = (item: MenuItem) => {
-    setEditingMenuItem(item);
-    setShowEditMenuItem(true);
-  };
-
-  const handleUpdateMenuItem = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!stall || !editingMenuItem) {
-      return;
-    }
-
-    try {
-      const token = localStorage.getItem('token');
-      await axios.put(
-        `${API_BASE_URL}/stalls/${stall.id}/menu/${editingMenuItem.id}`,
-        {
-          name: editingMenuItem.name,
-          description: editingMenuItem.description,
-          price: editingMenuItem.price,
-          isAvailable: editingMenuItem.isAvailable
-        },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      
-      toast.success('Menu item updated successfully');
-      setShowEditMenuItem(false);
-      setEditingMenuItem(null);
-      fetchStallData();
-    } catch (error: any) {
-      console.error('Update menu item error:', error);
-      toast.error(error.response?.data?.error || 'Failed to update menu item');
-    }
-  };
-
-  const handleDeleteMenuItem = async (itemId: string) => {
-    if (!stall) return;
-
-    if (!confirm('Are you sure you want to delete this menu item?')) {
-      return;
-    }
-
-    try {
-      const token = localStorage.getItem('token');
-      await axios.delete(`${API_BASE_URL}/stalls/${stall.id}/menu/${itemId}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
-      toast.success('Menu item deleted successfully');
-      fetchStallData();
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to delete menu item');
-    }
-  };
-
-  const handleOrderClick = (order: Order) => {
-    setSelectedOrder(order);
-    setShowOrderModal(true);
-  };
-
-  const handleConfirmPayment = async () => {
-    if (!selectedOrder || !mpesaPayerName.trim()) {
-      toast.error('Please enter the M-Pesa payer\'s full name');
-      return;
-    }
-
-    try {
-      const token = localStorage.getItem('token');
-      const response = await axios.post(`${API_BASE_URL}/orders/${selectedOrder.id}/confirm-payment`, {
-        mpesaPayerName: mpesaPayerName
-      }, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
-      toast.success('Payment confirmed successfully! You can now start preparing the order.');
-
-      
-      // Refresh order data without closing modal
-      const updatedOrderResponse = await axios.get(`${API_BASE_URL}/orders/${selectedOrder.id}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setSelectedOrder(updatedOrderResponse.data.order);
-      fetchOrders();
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to confirm payment');
-    }
-  };
-
-  const handleUpdateOrderStatus = async (orderId: string, status: string) => {
-    try {
-      const token = localStorage.getItem('token');
-      await axios.patch(`${API_BASE_URL}/orders/${orderId}/status`, {
-        status
-      }, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
-      const statusMessages: Record<string, string> = {
-        'PREPARING': 'Order is now being prepared!',
-        'READY_FOR_DELIVERY': 'Order is ready! Finding a delivery person...',
-        'DELIVERED': 'Order marked as delivered!',
-        'CANCELLED': 'Order has been cancelled.'
-      };
-      
-      toast.success(statusMessages[status] || 'Order status updated successfully!');
-      
-      // Refresh order data in modal without closing it
-      if (selectedOrder) {
-        const updatedOrderResponse = await axios.get(`${API_BASE_URL}/orders/${orderId}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        setSelectedOrder(updatedOrderResponse.data.order);
+      if (order.paymentStatus === 'PENDING') {
+        await axios.post(`${API_BASE_URL}/orders/${order.id}/confirm-payment`, { mpesaPayerName: mpesaName }, { headers: authHeader() });
       }
-      
-      fetchOrders();
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to update order status');
-    }
+      // Move order into Preparing state so it shows up in Prep tab
+      await axios.patch(`${API_BASE_URL}/orders/${order.id}/status`, { status: 'PREPARING' }, { headers: authHeader() });
+
+      setDismissing(d => new Set(d).add(order.id));
+      setTimeout(() => {
+        setDismissing(d => { const n = new Set(d); n.delete(order.id); return n; });
+        fetchOrders();
+        setSelectedOrder(null);
+        setTab('prep');
+        toast.success('Order accepted — now in prep!');
+      }, 350);
+    } catch (err: any) { toast.error(err.response?.data?.error || 'Failed'); }
   };
 
-  const handleRejectDelivery = async () => {
-    if (!selectedOrder || !rejectReason.trim()) {
-      toast.error('Please provide a reason for rejection');
-      return;
-    }
-
+  const updateStatus = async (orderId: string, status: string) => {
     try {
-      const token = localStorage.getItem('token');
-      await axios.post(`${API_BASE_URL}/orders/${selectedOrder.id}/reject-delivery`, {
-        reason: rejectReason
-      }, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
-      toast.success('Delivery person rejected. Finding another delivery person...');
-      setShowRejectModal(false);
-      setRejectReason('');
-      
-      // Refresh order data in modal
-      const updatedOrderResponse = await axios.get(`${API_BASE_URL}/orders/${selectedOrder.id}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setSelectedOrder(updatedOrderResponse.data.order);
+      await axios.patch(`${API_BASE_URL}/orders/${orderId}/status`, { status }, { headers: authHeader() });
+      const msgs: Record<string, string> = { PREPARING: 'Preparing!', READY_FOR_DELIVERY: 'Ready — finding runner...', DELIVERED: 'Delivered!', CANCELLED: 'Cancelled.' };
+      toast.success(msgs[status] || 'Updated');
       fetchOrders();
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to reject delivery person');
-    }
+      setSelectedOrder(null);
+    } catch (err: any) { toast.error(err.response?.data?.error || 'Failed'); }
   };
 
-  const handleConfirmPickup = async () => {
-    if (!selectedOrder) return;
-
+  const addMenuItem = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!stall) return;
     try {
-      const token = localStorage.getItem('token');
-      await axios.post(`${API_BASE_URL}/orders/${selectedOrder.id}/confirm-pickup`, {}, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
-      toast.success('Delivery pickup confirmed! Order is now out for delivery.');
-      
-      // Refresh order data in modal
-      const updatedOrderResponse = await axios.get(`${API_BASE_URL}/orders/${selectedOrder.id}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setSelectedOrder(updatedOrderResponse.data.order);
-      fetchOrders();
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to confirm pickup');
-    }
+      await axios.post(`${API_BASE_URL}/stalls/${stall.id}/menu`, newItem, { headers: authHeader() });
+      toast.success('Item added');
+      setNewItem({ name: '', description: '', price: 0, isAvailable: true });
+      setShowAddItem(false);
+      fetchAll();
+    } catch (err: any) { toast.error(err.response?.data?.error || 'Failed'); }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    router.push('/');
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'PENDING': return 'text-yellow-600 bg-yellow-100';
-      case 'CONFIRMED': return 'text-blue-600 bg-blue-100';
-      case 'PREPARING': return 'text-orange-600 bg-orange-100';
-      case 'READY_FOR_DELIVERY': return 'text-purple-600 bg-purple-100';
-      case 'DELIVERED': return 'text-green-600 bg-green-100';
-      case 'CANCELLED': return 'text-red-600 bg-red-100';
-      default: return 'text-gray-600 bg-gray-100';
-    }
+  const tabOrders = {
+    new:   orders.filter(o => o.paymentStatus === 'PENDING'),
+    prep:  orders.filter(o => o.paymentStatus === 'CONFIRMED' && o.status !== 'READY_FOR_DELIVERY' && o.status !== 'DELIVERED' && o.status !== 'CANCELLED'),
+    ready: orders.filter(o => o.status === 'READY_FOR_DELIVERY'),
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600"></div>
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
 
   return (
     <>
-      <Head>
-        <title>Stall Dashboard - Klabu</title>
-        <meta name="description" content="Manage your stall and orders" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <link rel="icon" href="/favicon.ico" />
-      </Head>
+      <Head><title>{stall?.name || 'Dashboard'} — Klabu</title></Head>
 
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-background font-body pb-24">
         {/* Header */}
-        <header className="bg-white shadow-sm border-b">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center py-4">
-              <div className="flex items-center">
-                <Link href="/" className="flex items-center">
-                  <h1 className="text-2xl font-bold text-green-600">Klabu</h1>
-                  <span className="ml-2 text-sm text-gray-500">Stall Dashboard</span>
-                </Link>
-              </div>
-              <div className="flex items-center space-x-2 sm:space-x-4">
-                <span className="hidden sm:block text-sm text-gray-600 truncate max-w-[160px]">Welcome, {user?.profile?.fullName}</span>
-                <NotificationBell
-                  token={typeof window !== 'undefined' ? localStorage.getItem('token') ?? '' : ''}
-                  socket={socket}
-                />
-                <button
-                  onClick={handleLogout}
-                  className="flex items-center text-gray-600 hover:text-gray-900"
-                >
-                  <LogOut size={20} className="mr-1" />
-                  <span className="hidden sm:inline">Logout</span>
-                </button>
-              </div>
+        <div className="bg-primary px-5 pt-10 pb-5">
+          <div className="flex items-start justify-between mb-4">
+            <div>
+              <p className="font-body text-white/60 text-xs mb-0.5">Stall Dashboard</p>
+              <h1 className="font-heading text-white text-2xl">{stall?.name || 'Your Stall'}</h1>
             </div>
-          </div>
-        </header>
-
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          {/* Approval Status Banner */}
-          {user?.profile && !user.profile.isApproved && (
-            <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-lg p-6">
-              <div className="flex items-start">
-                <div className="flex-shrink-0">
-                  <Clock className="h-6 w-6 text-yellow-600" />
-                </div>
-                <div className="ml-3">
-                  <h3 className="text-lg font-medium text-yellow-800">Pending Admin Approval</h3>
-                  <p className="mt-2 text-sm text-yellow-700">
-                    Your account is currently pending approval from the administrator. 
-                    You won't be able to receive orders until your account is approved. 
-                    This usually takes 24-48 hours. We'll notify you once approved.
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-            <div className="card">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center">
-                  <div className={`rounded-full p-3 mr-4 ${stall?.isActive ? 'bg-green-100' : 'bg-red-100'}`}>
-                    <Store className={`${stall?.isActive ? 'text-green-600' : 'text-red-600'}`} size={24} />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-gray-600">Stall Status</p>
-                    <p className={`text-lg font-semibold ${stall?.isActive ? 'text-green-600' : 'text-red-600'}`}>
-                      {stall?.isActive ? 'Open for Business' : 'Closed'}
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={toggleStallStatus}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 ${
-                    stall?.isActive ? 'bg-green-600' : 'bg-gray-200'
-                  }`}
-                >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                      stall?.isActive ? 'translate-x-6' : 'translate-x-1'
-                    }`}
-                  />
-                </button>
-              </div>
-            </div>
-
-            <div className="card">
-              <div className="flex items-center">
-                <div className="bg-blue-100 rounded-full p-3">
-                  <Package className="text-blue-600" size={24} />
-                </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Menu Items</p>
-                  <p className="text-lg font-semibold text-gray-900">{stall?.menuItems?.length || 0}</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="card">
-              <div className="flex items-center">
-                <div className="bg-orange-100 rounded-full p-3">
-                  <Clock className="text-orange-600" size={24} />
-                </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Pending Orders</p>
-                  <p className="text-lg font-semibold text-gray-900">
-                    {orders.filter(order => order.status === 'PENDING').length}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="card">
-              <div className="flex items-center">
-                <div className="bg-purple-100 rounded-full p-3">
-                  <DollarSign className="text-purple-600" size={24} />
-                </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Total Revenue</p>
-                  <p className="text-lg font-semibold text-gray-900">
-                    KES {orders.reduce((sum, order) => sum + order.totalAmount, 0).toLocaleString()}
-                  </p>
-                </div>
-              </div>
-            </div>
+            <button onClick={() => { localStorage.removeItem('token'); localStorage.removeItem('user'); router.push('/login'); }} className="text-white/60 p-2">
+              <LogOut size={20} />
+            </button>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* Menu Management */}
-            <div className="card">
-              <div className="flex justify-between items-center mb-6">
-                <h2 className="text-xl font-semibold text-gray-900">Menu Items</h2>
-                {stall ? (
-                  <button
-                    onClick={() => setShowAddMenuItem(true)}
-                    className="btn-primary flex items-center"
-                  >
-                    <Plus size={20} className="mr-2" />
-                    Add Item
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => setShowCreateStall(true)}
-                    className="btn-primary flex items-center"
-                  >
-                    <Plus size={20} className="mr-2" />
-                    Create Stall First
-                  </button>
-                )}
-              </div>
-
-              {!stall ? (
-                <div className="text-center py-8 text-gray-500">
-                  <Store size={48} className="mx-auto mb-4 text-gray-300" />
-                  <p>No stall created yet</p>
-                  <p className="text-sm">Create your stall first to start adding menu items</p>
-                </div>
-              ) : stall?.menuItems?.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                  <Package size={48} className="mx-auto mb-4 text-gray-300" />
-                  <p>No menu items yet</p>
-                  <p className="text-sm">Add your first menu item to get started</p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {stall?.menuItems?.map((item) => (
-                    <div key={item.id} className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
-                      <div className="flex-1">
-                        <h3 className="font-medium text-gray-900">{item.name}</h3>
-                        <p className="text-sm text-gray-600">{item.description}</p>
-                        <p className="text-sm font-medium text-green-600">KES {item.price}</p>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <span className={`px-2 py-1 rounded-full text-xs ${
-                          item.isAvailable ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                        }`}>
-                          {item.isAvailable ? 'Available' : 'Unavailable'}
-                        </span>
-                        <button 
-                          onClick={() => handleEditClick(item)}
-                          className="p-2 text-gray-400 hover:text-blue-600 transition-colors"
-                          title="Edit item"
-                        >
-                          <Edit size={16} />
-                        </button>
-                        <button 
-                          onClick={() => handleDeleteMenuItem(item.id)}
-                          className="p-2 text-gray-400 hover:text-red-600 transition-colors"
-                          title="Delete item"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+          {/* Open/Closed toggle */}
+          <div className="flex items-center justify-between bg-white/10 rounded-card px-4 py-3">
+            <div>
+              <p className="font-body text-white text-sm font-medium">{stall?.isActive ? 'Accepting Orders' : 'Stall Closed'}</p>
+              <p className="font-body text-white/50 text-xs">{stall?.isActive ? 'Tap to close your stall' : 'Tap to open your stall'}</p>
             </div>
-
-            {/* Recent Orders */}
-            <div className="card">
-              <h2 className="text-xl font-semibold text-gray-900 mb-6">Recent Orders</h2>
-              
-              {orders.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                  <Package size={48} className="mx-auto mb-4 text-gray-300" />
-                  <p>No orders yet</p>
-                  <p className="text-sm">Orders will appear here when customers place them</p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {orders.slice(0, 5).map((order) => (
-                    <div 
-                      key={order.id} 
-                      className="p-4 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
-                      onClick={() => handleOrderClick(order)}
-                    >
-                      <div className="flex justify-between items-start mb-2">
-                        <div>
-                          <h3 className="font-medium text-gray-900">{order.customerName}</h3>
-                          <p className="text-sm text-gray-600">{order.customerPhone}</p>
-                          <p className="text-sm text-gray-600">{order.deliveryLocation}</p>
-                          {order.roomNumber && (
-                            <p className="text-sm text-gray-600">Room: {order.roomNumber}</p>
-                          )}
-                        </div>
-                        <div className="flex flex-col items-end space-y-1">
-                          <span className={`px-2 py-1 rounded-full text-xs ${getStatusColor(order.status)}`}>
-                            {order.status}
-                          </span>
-                          <span className={`px-2 py-1 rounded-full text-xs ${
-                            order.paymentStatus === 'CONFIRMED' 
-                              ? 'text-green-600 bg-green-100' 
-                              : 'text-yellow-600 bg-yellow-100'
-                          }`}>
-                            {order.paymentStatus}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <div>
-                          <p className="text-sm font-medium text-green-600">
-                            KES {order.totalAmount + order.deliveryFee}
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            {order.items.length} item{order.items.length > 1 ? 's' : ''}
-                          </p>
-                        </div>
-                        <p className="text-xs text-gray-500">
-                          {new Date(order.createdAt).toLocaleDateString()}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+            <button
+              onClick={toggleStatus}
+              className={`relative w-14 h-7 rounded-pill transition-colors duration-200 ${stall?.isActive ? 'bg-white/90' : 'bg-white/20'}`}
+            >
+              <span className={`absolute top-0.5 w-6 h-6 rounded-full transition-all duration-200 shadow ${stall?.isActive ? 'left-7 bg-primary' : 'left-0.5 bg-muted'}`} />
+            </button>
           </div>
         </div>
 
-        {/* Create Stall Modal */}
-        {showCreateStall && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-lg p-6 w-full max-w-md">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Create Your Stall</h3>
-              <form onSubmit={handleCreateStall} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Stall Name *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={newStall.name}
-                    onChange={(e) => setNewStall({...newStall, name: e.target.value})}
-                    className="input-field"
-                    placeholder="e.g., Kamau's Kitchen"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Description
-                  </label>
-                  <textarea
-                    value={newStall.description}
-                    onChange={(e) => setNewStall({...newStall, description: e.target.value})}
-                    className="input-field"
-                    rows={3}
-                    placeholder="Describe your stall and the food you serve..."
-                  />
-                </div>
-                <div className="flex space-x-3 pt-4">
-                  <button
-                    type="button"
-                    onClick={() => setShowCreateStall(false)}
-                    className="flex-1 btn-secondary"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="flex-1 btn-primary"
-                  >
-                    Create Stall
-                  </button>
-                </div>
-              </form>
+        {/* Tabs */}
+        <div className="flex px-4 pt-4 gap-2">
+          {(['new', 'prep', 'ready'] as Tab[]).map(t => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`flex-1 py-2 rounded-pill font-body text-sm font-medium transition-colors relative ${tab === t ? 'bg-primary text-surface' : 'bg-surface text-app-text border border-muted/30'}`}
+            >
+              {t === 'new' ? 'New' : t === 'prep' ? 'Prep' : 'Ready'}
+              {tabOrders[t].length > 0 && (
+                <span className={`ml-1.5 inline-flex items-center justify-center w-5 h-5 rounded-full text-xs font-medium ${tab === t ? 'bg-white/20 text-white' : 'bg-accent text-white'}`}>
+                  {tabOrders[t].length}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+
+        {/* Order cards */}
+        <div className="px-4 pt-4 flex flex-col gap-3">
+          {tabOrders[tab].length === 0 ? (
+            <div className="text-center py-16">
+              <span className="text-4xl mb-3 block">{tab === 'new' ? '📭' : tab === 'prep' ? '👨‍🍳' : '🛵'}</span>
+              <p className="font-heading text-app-text text-base">No {tab === 'new' ? 'new orders' : tab === 'prep' ? 'orders in prep' : 'orders ready'}</p>
             </div>
-          </div>
-        )}
+          ) : (
+            tabOrders[tab].map(order => (
+              <div
+                key={order.id}
+                className={`bg-surface rounded-card shadow-soft p-4 transition-all duration-350 ${dismissing.has(order.id) ? 'translate-x-full opacity-0' : 'translate-x-0 opacity-100'}`}
+              >
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <p className="font-heading text-app-text text-base">#{order.id.slice(-6).toUpperCase()}</p>
+                    <p className="font-body text-muted text-xs">{timeAgo(order.createdAt)}</p>
+                  </div>
+                  <span className="font-heading text-primary font-semibold text-base">KES {order.totalAmount}</span>
+                </div>
 
-        {/* Add Menu Item Modal */}
-        {showAddMenuItem && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-lg p-6 w-full max-w-md">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Add Menu Item</h3>
-              <form onSubmit={handleAddMenuItem} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Item Name
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={newMenuItem.name}
-                    onChange={(e) => setNewMenuItem({...newMenuItem, name: e.target.value})}
-                    className="input-field"
-                    placeholder="e.g., Ugali & Sukuma Wiki"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Description
-                  </label>
-                  <textarea
-                    value={newMenuItem.description}
-                    onChange={(e) => setNewMenuItem({...newMenuItem, description: e.target.value})}
-                    className="input-field"
-                    rows={3}
-                    placeholder="Describe the item..."
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Price (KES)
-                  </label>
-                  <input
-                    type="number"
-                    required
-                    min="0"
-                    step="0.01"
-                    value={newMenuItem.price}
-                    onChange={(e) => setNewMenuItem({...newMenuItem, price: parseFloat(e.target.value)})}
-                    className="input-field"
-                    placeholder="0.00"
-                  />
-                </div>
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id="isAvailable"
-                    checked={newMenuItem.isAvailable}
-                    onChange={(e) => setNewMenuItem({...newMenuItem, isAvailable: e.target.checked})}
-                    className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
-                  />
-                  <label htmlFor="isAvailable" className="ml-2 text-sm text-gray-700">
-                    Available for order
-                  </label>
-                </div>
-                <div className="flex space-x-3 pt-4">
-                  <button
-                    type="button"
-                    onClick={() => setShowAddMenuItem(false)}
-                    className="flex-1 btn-secondary"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="flex-1 btn-primary"
-                  >
-                    Add Item
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {/* Edit Menu Item Modal */}
-        {showEditMenuItem && editingMenuItem && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-lg p-6 w-full max-w-md">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Edit Menu Item</h3>
-              <form onSubmit={handleUpdateMenuItem} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Item Name
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={editingMenuItem.name}
-                    onChange={(e) => setEditingMenuItem({...editingMenuItem, name: e.target.value})}
-                    className="input-field"
-                    placeholder="e.g., Ugali & Sukuma Wiki"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Description
-                  </label>
-                  <textarea
-                    value={editingMenuItem.description || ''}
-                    onChange={(e) => setEditingMenuItem({...editingMenuItem, description: e.target.value})}
-                    className="input-field"
-                    rows={3}
-                    placeholder="Describe the item..."
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Price (KES)
-                  </label>
-                  <input
-                    type="number"
-                    required
-                    min="0"
-                    step="0.01"
-                    value={editingMenuItem.price}
-                    onChange={(e) => setEditingMenuItem({...editingMenuItem, price: parseFloat(e.target.value)})}
-                    className="input-field"
-                    placeholder="0.00"
-                  />
-                </div>
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id="isAvailableEdit"
-                    checked={editingMenuItem.isAvailable}
-                    onChange={(e) => setEditingMenuItem({...editingMenuItem, isAvailable: e.target.checked})}
-                    className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
-                  />
-                  <label htmlFor="isAvailableEdit" className="ml-2 text-sm text-gray-700">
-                    Available for order
-                  </label>
-                </div>
-                <div className="flex space-x-3 pt-4">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowEditMenuItem(false);
-                      setEditingMenuItem(null);
-                    }}
-                    className="flex-1 btn-secondary"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="flex-1 btn-primary"
-                  >
-                    Update Item
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {/* Order Details Modal */}
-        {showOrderModal && selectedOrder && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-lg p-4 sm:p-6 w-full max-w-lg sm:max-w-2xl max-h-[90vh] overflow-y-auto">
-              <h3 className="text-xl font-semibold text-gray-900 mb-6">Order Details</h3>
-              
-              {/* Customer Information */}
-              <div className="mb-6">
-                <h4 className="font-medium text-gray-900 mb-3">Customer Information</h4>
-                <div className="bg-gray-50 rounded-lg p-4 space-y-2">
-                  <p><strong>Name:</strong> {selectedOrder.customerName}</p>
-                  <p><strong>Phone:</strong> {selectedOrder.customerPhone}</p>
-                  <p><strong>Delivery Location:</strong> {selectedOrder.deliveryLocation}</p>
-                  {selectedOrder.roomNumber && (
-                    <p><strong>Room Number:</strong> {selectedOrder.roomNumber}</p>
-                  )}
-                </div>
-              </div>
-
-              {/* Order Items */}
-              <div className="mb-6">
-                <h4 className="font-medium text-gray-900 mb-3">Order Items</h4>
-                <div className="space-y-2">
-                  {selectedOrder.items.map((item) => (
-                    <div key={item.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                      <div>
-                        <p className="font-medium">{item.menuItem.name}</p>
-                        <p className="text-sm text-gray-600">Qty: {item.quantity}</p>
-                      </div>
-                      <p className="font-medium">KES {item.price * item.quantity}</p>
-                    </div>
+                <div className="space-y-1 mb-3">
+                  {order.items.map(item => (
+                    <p key={item.id} className="font-body text-app-text text-sm">{item.quantity}× {item.menuItem.name}</p>
                   ))}
                 </div>
-                <div className="mt-4 pt-4 border-t">
-                  <div className="flex justify-between text-lg font-semibold">
-                    <span>Total:</span>
-                    <span>KES {selectedOrder.totalAmount + selectedOrder.deliveryFee}</span>
-                  </div>
-                  <p className="text-sm text-gray-600">(Includes KES {selectedOrder.deliveryFee} delivery fee)</p>
-                </div>
-              </div>
 
-              {/* Payment Confirmation */}
-              {selectedOrder.paymentStatus === 'PENDING' && (
-                <div className="mb-6">
-                  <h4 className="font-medium text-gray-900 mb-3">Confirm Payment</h4>
-                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
-                    <p className="text-sm text-yellow-800">
-                      <strong>Customer's M-Pesa Code:</strong> {selectedOrder.paymentCode || 'Not provided'}
-                    </p>
-                    <p className="text-xs text-yellow-600 mt-1">
-                      Verify this code matches the M-Pesa transaction you received
-                    </p>
-                  </div>
-                  <div className="flex space-x-3">
-                    <input
-                      type="text"
-                      value={mpesaPayerName}
-                      onChange={(e) => setMpesaPayerName(e.target.value)}
-                      className="flex-1 input-field"
-                      placeholder="Enter M-Pesa payer's full name"
-                    />
+                <div className="flex items-center gap-2 text-xs font-body text-muted mb-4">
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1a4 4 0 100 8A4 4 0 006 1z" stroke="currentColor" strokeWidth="1.2"/></svg>
+                  {order.deliveryLocation}{order.roomNumber ? `, Room ${order.roomNumber}` : ''}
+                </div>
+
+                {tab === 'new' && (
+                  <button
+                    onClick={() => { setSelectedOrder(order); setMpesaName(''); }}
+                    className="w-full h-12 bg-primary text-surface rounded-card font-body font-semibold text-base active:scale-[0.98] transition-transform"
+                  >
+                    Accept Order
+                  </button>
+                )}
+
+                {tab === 'prep' && (
+                  <div className="flex gap-2">
                     <button
-                      onClick={handleConfirmPayment}
-                      className="btn-primary"
+                      onClick={() => updateStatus(order.id, 'READY_FOR_DELIVERY')}
+                      className="flex-1 h-12 bg-primary text-surface rounded-card font-body font-semibold text-base active:scale-[0.98] transition-transform"
                     >
-                      Confirm Payment
+                      Mark as Ready
+                    </button>
+                    <button
+                      onClick={() => updateStatus(order.id, 'CANCELLED')}
+                      className="h-12 px-4 bg-accent/10 text-accent rounded-card font-body font-semibold text-sm active:scale-[0.98] transition-transform"
+                    >
+                      Cancel
                     </button>
                   </div>
-                </div>
-              )}
+                )}
 
-              {/* Delivery Person Information */}
-              {selectedOrder.deliveryPerson && (
-                <div className="mb-6">
-                  <h4 className="font-medium text-gray-900 mb-3">Delivery Person</h4>
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center">
-                        <div className="bg-blue-100 rounded-full p-2 mr-3">
-                          <Truck className="text-blue-600" size={20} />
-                        </div>
-                        <div>
-                          <p className="font-medium text-gray-900">{selectedOrder.deliveryPerson.fullName}</p>
-                          <div className="flex items-center text-sm text-gray-600">
-                            <Phone size={14} className="mr-1" />
-                            {selectedOrder.deliveryPerson.phoneNumber}
-                          </div>
-                          <div className="flex items-center text-sm text-gray-600">
-                            <Star size={14} className="mr-1" />
-                            {selectedOrder.deliveryPerson.rating}/5.0
-                          </div>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <span className={`px-2 py-1 rounded-full text-xs ${
-                          selectedOrder.deliveryStatus === 'ASSIGNED' ? 'bg-blue-100 text-blue-800' :
-                          selectedOrder.deliveryStatus === 'PICKED_UP' ? 'bg-orange-100 text-orange-800' :
-                          selectedOrder.deliveryStatus === 'DELIVERED' ? 'bg-green-100 text-green-800' :
-                          'bg-gray-100 text-gray-800'
-                        }`}>
-                          {selectedOrder.deliveryStatus}
-                        </span>
-                      </div>
+                {tab === 'ready' && order.deliveryPerson && (
+                  <div className="flex items-center gap-3 bg-background rounded-card px-3 py-2">
+                    <div className="flex-1">
+                      <p className="font-body text-sm font-medium text-app-text">{order.deliveryPerson.fullName}</p>
+                      <p className="font-body text-xs text-muted">Runner assigned</p>
                     </div>
-                    
-                    {/* Delivery Actions */}
-                    {selectedOrder.deliveryStatus === 'ASSIGNED' && (
-                      <div className="mt-4 pt-4 border-t border-blue-200">
-                        <div className="flex space-x-3">
-                          <button
-                            onClick={handleConfirmPickup}
-                            className="btn-primary flex items-center"
-                          >
-                            <CheckCircle size={16} className="mr-2" />
-                            Confirm Pickup
-                          </button>
-                          <button
-                            onClick={() => setShowRejectModal(true)}
-                            className="btn-secondary flex items-center"
-                          >
-                            <XCircle size={16} className="mr-2" />
-                            Choose Different Person
-                          </button>
-                        </div>
-                      </div>
-                    )}
+                    <a href={`tel:${order.deliveryPerson.phoneNumber}`} className="text-primary">
+                      <Phone size={18} />
+                    </a>
                   </div>
-                </div>
-              )}
-
-              {/* Order Status Management */}
-              {selectedOrder.paymentStatus === 'CONFIRMED' && (
-                <div className="mb-6">
-                  <h4 className="font-medium text-gray-900 mb-3">Order Status</h4>
-                  <div className="flex space-x-2">
-                    {selectedOrder.status === 'CONFIRMED' && (
-                      <button
-                        onClick={() => handleUpdateOrderStatus(selectedOrder.id, 'PREPARING')}
-                        className="btn-primary"
-                      >
-                        Start Preparing
-                      </button>
-                    )}
-                    {selectedOrder.status === 'PREPARING' && (
-                      <button
-                        onClick={() => handleUpdateOrderStatus(selectedOrder.id, 'READY_FOR_DELIVERY')}
-                        className="btn-primary"
-                      >
-                        Ready for Delivery
-                      </button>
-                    )}
-                    {selectedOrder.status === 'READY_FOR_DELIVERY' && !selectedOrder.deliveryPerson && (
-                      <div className="flex items-center text-yellow-600">
-                        <AlertCircle size={16} className="mr-2" />
-                        <span className="text-sm">Finding delivery person...</span>
-                      </div>
-                    )}
-                    {selectedOrder.status === 'OUT_FOR_DELIVERY' && (
-                      <div className="flex items-center text-blue-600">
-                        <Truck size={16} className="mr-2" />
-                        <span className="text-sm">Out for delivery</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Close Button */}
-              <div className="flex justify-end">
-                <button
-                  onClick={() => {
-                    setShowOrderModal(false);
-                    setSelectedOrder(null);
-                    setMpesaPayerName('');
-                  }}
-                  className="btn-secondary"
-                >
-                  Close
-                </button>
+                )}
               </div>
-            </div>
+            ))
+          )}
+        </div>
+
+        {/* Menu section */}
+        <div className="px-4 mt-6">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-heading text-app-text text-lg">Menu Items</h2>
+            <button onClick={() => setShowAddItem(true)} className="flex items-center gap-1.5 bg-primary text-surface px-4 py-2 rounded-pill font-body text-sm font-medium">
+              <Plus size={14} /> Add Item
+            </button>
           </div>
-        )}
-
-        {/* Reject Delivery Person Modal */}
-        {showRejectModal && selectedOrder && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-lg p-6 w-full max-w-md">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Choose Different Delivery Person</h3>
-              <p className="text-sm text-gray-600 mb-4">
-                Please provide a reason for choosing a different delivery person. 
-                We'll find another available delivery person for you.
-              </p>
-              <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Reason *
-                </label>
-                <textarea
-                  value={rejectReason}
-                  onChange={(e) => setRejectReason(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                  rows={4}
-                  placeholder="e.g., Need someone closer to the location, prefer different delivery person, etc."
-                  required
-                />
+          <div className="bg-surface rounded-card shadow-soft divide-y divide-muted/20">
+            {stall?.menuItems.map(item => (
+              <div key={item.id} className="flex items-center justify-between px-4 py-3">
+                <div>
+                  <p className="font-body font-medium text-app-text text-sm">{item.name}</p>
+                  <p className="font-heading text-primary text-sm font-semibold">KES {item.price}</p>
+                </div>
+                <span className={`px-2 py-0.5 rounded-pill text-xs font-body ${item.isAvailable ? 'bg-primary/10 text-primary' : 'bg-accent/10 text-accent'}`}>
+                  {item.isAvailable ? 'Available' : 'Sold out'}
+                </span>
               </div>
-              <div className="flex space-x-3">
-                <button
-                  onClick={() => {
-                    setShowRejectModal(false);
-                    setRejectReason('');
-                  }}
-                  className="flex-1 btn-secondary"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleRejectDelivery}
-                  className="flex-1 btn-primary"
-                >
-                  Find Another Person
-                </button>
-              </div>
-            </div>
+            ))}
+            {!stall?.menuItems.length && (
+              <p className="px-4 py-6 font-body text-muted text-sm text-center">No menu items yet</p>
+            )}
           </div>
-        )}
+        </div>
       </div>
+
+      {/* Accept order sheet */}
+      {selectedOrder && (
+        <>
+          <div className="fixed inset-0 z-40 bg-app-text/30 backdrop-blur-sm" onClick={() => setSelectedOrder(null)} />
+          <div className="fixed bottom-0 left-0 right-0 z-50 bg-surface rounded-t-[32px] shadow-soft px-5 pb-10 pt-5">
+            <div className="flex justify-center mb-4">
+              <div className="w-10 h-1 rounded-pill bg-muted/40" />
+            </div>
+            <h3 className="font-heading text-app-text text-xl mb-1">Order #{selectedOrder.id.slice(-6).toUpperCase()}</h3>
+            <p className="font-body text-muted text-sm mb-4">{selectedOrder.customerName} · {selectedOrder.customerPhone}</p>
+
+            <div className="bg-background rounded-card p-4 mb-4">
+              {selectedOrder.items.map(i => (
+                <div key={i.id} className="flex justify-between font-body text-sm py-1">
+                  <span>{i.quantity}× {i.menuItem.name}</span>
+                  <span className="text-muted">KES {i.price * i.quantity}</span>
+                </div>
+              ))}
+              <div className="border-t border-muted/20 mt-2 pt-2 flex justify-between font-heading font-semibold text-app-text">
+                <span>Total</span><span>KES {selectedOrder.totalAmount}</span>
+              </div>
+            </div>
+
+            {selectedOrder.paymentStatus === 'PENDING' && (
+              <div className="mb-4">
+                <label className="font-body text-xs text-muted block mb-1">M-Pesa Payer Name *</label>
+                <input
+                  type="text"
+                  placeholder="e.g. JOHN DOE"
+                  value={mpesaName}
+                  onChange={e => setMpesaName(e.target.value)}
+                  className="w-full h-11 px-4 bg-background rounded-card border border-muted/40 font-body text-sm text-app-text placeholder-muted focus:outline-none focus:border-primary"
+                />
+                <p className="font-body text-xs text-muted mt-1">Enter as shown in your M-Pesa statement to verify payment</p>
+              </div>
+            )}
+
+            <button
+              onClick={() => acceptOrder(selectedOrder)}
+              className="w-full h-14 bg-primary text-surface rounded-button font-body font-semibold text-base active:scale-[0.98] transition-transform"
+            >
+              Confirm & Accept Order
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* Add menu item sheet */}
+      {showAddItem && (
+        <>
+          <div className="fixed inset-0 z-40 bg-app-text/30 backdrop-blur-sm" onClick={() => setShowAddItem(false)} />
+          <div className="fixed bottom-0 left-0 right-0 z-50 bg-surface rounded-t-[32px] shadow-soft px-5 pb-10 pt-5">
+            <div className="flex justify-center mb-4">
+              <div className="w-10 h-1 rounded-pill bg-muted/40" />
+            </div>
+            <h3 className="font-heading text-app-text text-xl mb-4">Add Menu Item</h3>
+            <form onSubmit={addMenuItem} className="space-y-3">
+              <div>
+                <label className="font-body text-xs text-muted block mb-1">Name *</label>
+                <input required value={newItem.name} onChange={e => setNewItem(p => ({ ...p, name: e.target.value }))}
+                  placeholder="e.g. Chapati & Ndengu"
+                  className="w-full h-11 px-4 bg-background rounded-card border border-muted/40 font-body text-sm text-app-text placeholder-muted focus:outline-none focus:border-primary" />
+              </div>
+              <div>
+                <label className="font-body text-xs text-muted block mb-1">Description</label>
+                <input value={newItem.description} onChange={e => setNewItem(p => ({ ...p, description: e.target.value }))}
+                  placeholder="Short description (optional)"
+                  className="w-full h-11 px-4 bg-background rounded-card border border-muted/40 font-body text-sm text-app-text placeholder-muted focus:outline-none focus:border-primary" />
+              </div>
+              <div>
+                <label className="font-body text-xs text-muted block mb-1">Price (KES) *</label>
+                <input required type="number" min="1" value={newItem.price || ''} onChange={e => setNewItem(p => ({ ...p, price: Number(e.target.value) }))}
+                  placeholder="150"
+                  className="w-full h-11 px-4 bg-background rounded-card border border-muted/40 font-body text-sm text-app-text placeholder-muted focus:outline-none focus:border-primary" />
+              </div>
+              <button type="submit" className="w-full h-14 bg-primary text-surface rounded-button font-body font-semibold text-base mt-2 active:scale-[0.98] transition-transform">
+                Add to Menu
+              </button>
+            </form>
+          </div>
+        </>
+      )}
     </>
   );
 }

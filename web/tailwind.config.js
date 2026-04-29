@@ -8,21 +8,24 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        primary: {
-          50: '#f0fdf4',
-          100: '#dcfce7',
-          200: '#bbf7d0',
-          300: '#86efac',
-          400: '#4ade80',
-          500: '#22c55e',
-          600: '#16a34a',
-          700: '#15803d',
-          800: '#166534',
-          900: '#14532d',
-        },
+        primary:    '#2E5C3E',
+        background: '#F9F6F0',
+        surface:    '#FFFFFA',
+        'app-text': '#2D2823',
+        muted:      '#A89F91',
+        accent:     '#D96C4E',
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
+        heading: ['Fraunces', 'serif'],
+        body:    ['Outfit', 'sans-serif'],
+      },
+      borderRadius: {
+        card:   '24px',
+        button: '32px',
+        pill:   '99px',
+      },
+      boxShadow: {
+        soft: '0 8px 24px rgba(45, 40, 35, 0.08)',
       },
     },
   },

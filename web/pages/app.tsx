@@ -1,10 +1,14 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import SEO from '../components/SEO';
-import { Store, Truck, User, LogIn, UserPlus } from 'lucide-react';
+import { Store, Truck, LogIn } from 'lucide-react';
 import axios from 'axios';
 import { API_BASE_URL } from '../lib/config';
 import { TERMS_VERSIONS, STALL_OWNER_TERMS, DELIVERY_PERSON_TERMS } from '../lib/terms';
+
+const inputClass =
+  'w-full px-4 py-3 bg-background border border-muted/40 rounded-button text-app-text placeholder-muted text-sm focus:outline-none focus:border-primary transition-colors';
+const labelClass = 'block text-sm font-medium text-app-text mb-2';
 
 export default function App() {
   const [userType, setUserType] = useState<'stall' | 'delivery' | null>(null);
@@ -17,14 +21,14 @@ export default function App() {
         canonical="/app"
       />
 
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-background font-body">
         {/* Header */}
-        <header className="bg-white shadow-sm border-b">
+        <header className="bg-surface border-b border-muted/20">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex justify-between items-center py-4">
               <Link href="/" className="flex items-center">
-                <h1 className="text-2xl font-bold text-green-600">Klabu</h1>
-                <span className="ml-2 text-sm text-gray-500">App</span>
+                <h1 className="font-heading text-2xl text-primary">Klabu</h1>
+                <span className="ml-2 text-sm text-muted">App</span>
               </Link>
             </div>
           </div>
@@ -33,26 +37,26 @@ export default function App() {
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
           {!userType ? (
             <div className="text-center">
-              <h2 className="text-3xl font-bold text-gray-900 mb-8">
+              <h2 className="font-heading text-3xl text-app-text mb-4">
                 Join Klabu Platform
               </h2>
-              <p className="text-lg text-gray-600 mb-12">
+              <p className="text-lg text-muted mb-12">
                 Choose how you want to participate in the Klabu food delivery platform
               </p>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 {/* Stall Owner Card */}
-                <div className="bg-white rounded-lg shadow-lg p-8 border border-gray-200 hover:shadow-xl transition-shadow">
+                <div className="bg-surface rounded-card shadow-soft border border-muted/20 p-8 hover:shadow-md transition-shadow">
                   <div className="text-center">
-                    <div className="bg-green-100 rounded-full p-4 w-16 h-16 mx-auto mb-4 flex items-center justify-center">
-                      <Store className="text-green-600" size={32} />
+                    <div className="bg-primary/10 rounded-pill w-16 h-16 mx-auto mb-4 flex items-center justify-center">
+                      <Store className="text-primary" size={32} />
                     </div>
-                    <h3 className="text-2xl font-semibold text-gray-900 mb-4">Stall Owner</h3>
-                    <p className="text-gray-600 mb-6">
-                      Register your food stall and start receiving orders from students. 
+                    <h3 className="font-heading text-2xl text-app-text mb-4">Stall Owner</h3>
+                    <p className="text-muted mb-6">
+                      Register your food stall and start receiving orders from students.
                       Manage your menu, track orders, and grow your business.
                     </p>
-                    <ul className="text-left text-sm text-gray-600 mb-8 space-y-2">
+                    <ul className="text-left text-sm text-muted mb-8 space-y-2">
                       <li>• Create and manage your stall profile</li>
                       <li>• Add and update your menu items</li>
                       <li>• Receive and confirm orders</li>
@@ -60,7 +64,7 @@ export default function App() {
                     </ul>
                     <button
                       onClick={() => setUserType('stall')}
-                      className="w-full bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 transition-colors font-medium"
+                      className="w-full bg-primary text-surface py-3 rounded-button hover:bg-primary/90 transition-colors font-semibold"
                     >
                       Register as Stall Owner
                     </button>
@@ -68,17 +72,17 @@ export default function App() {
                 </div>
 
                 {/* Delivery Person Card */}
-                <div className="bg-white rounded-lg shadow-lg p-8 border border-gray-200 hover:shadow-xl transition-shadow">
+                <div className="bg-surface rounded-card shadow-soft border border-muted/20 p-8 hover:shadow-md transition-shadow">
                   <div className="text-center">
-                    <div className="bg-blue-100 rounded-full p-4 w-16 h-16 mx-auto mb-4 flex items-center justify-center">
-                      <Truck className="text-blue-600" size={32} />
+                    <div className="bg-accent/15 rounded-pill w-16 h-16 mx-auto mb-4 flex items-center justify-center">
+                      <Truck className="text-accent" size={32} />
                     </div>
-                    <h3 className="text-2xl font-semibold text-gray-900 mb-4">Delivery Person</h3>
-                    <p className="text-gray-600 mb-6">
-                      Earn money by delivering food to students. Work flexible hours 
+                    <h3 className="font-heading text-2xl text-app-text mb-4">Delivery Person</h3>
+                    <p className="text-muted mb-6">
+                      Earn money by delivering food to students. Work flexible hours
                       and be part of the Klabu delivery network.
                     </p>
-                    <ul className="text-left text-sm text-gray-600 mb-8 space-y-2">
+                    <ul className="text-left text-sm text-muted mb-8 space-y-2">
                       <li>• Flexible working hours</li>
                       <li>• Earn per delivery</li>
                       <li>• Work when you want</li>
@@ -86,7 +90,7 @@ export default function App() {
                     </ul>
                     <button
                       onClick={() => setUserType('delivery')}
-                      className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                      className="w-full bg-primary text-surface py-3 rounded-button hover:bg-primary/90 transition-colors font-semibold"
                     >
                       Register as Delivery Person
                     </button>
@@ -95,14 +99,14 @@ export default function App() {
               </div>
 
               {/* Login Section */}
-              <div className="mt-12 bg-white rounded-lg shadow-lg p-8 border border-gray-200">
-                <h3 className="text-xl font-semibold text-gray-900 mb-4 text-center">
+              <div className="mt-12 bg-surface rounded-card shadow-soft border border-muted/20 p-8">
+                <h3 className="font-heading text-xl text-app-text mb-4 text-center">
                   Already have an account?
                 </h3>
                 <div className="flex flex-col sm:flex-row gap-4 justify-center">
                   <Link
                     href="/login"
-                    className="flex items-center justify-center px-6 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                    className="flex items-center justify-center px-6 py-3 border border-muted/40 rounded-button text-app-text hover:bg-background transition-colors"
                   >
                     <LogIn size={20} className="mr-2" />
                     Login
@@ -174,84 +178,74 @@ function StallOwnerRegistration({ onBack }: { onBack: () => void }) {
 
   return (
     <div className="max-w-2xl mx-auto">
-      <div className="bg-white rounded-lg shadow-lg p-8">
+      <div className="bg-surface rounded-card shadow-soft border border-muted/20 p-8">
         <div className="flex items-center mb-6">
           <button
             onClick={onBack}
-            className="mr-4 p-2 hover:bg-gray-100 rounded-lg"
+            className="mr-4 px-3 py-2 hover:bg-background rounded-button text-app-text transition-colors"
           >
             ← Back
           </button>
-          <h2 className="text-2xl font-bold text-gray-900">Stall Owner Registration</h2>
+          <h2 className="font-heading text-2xl text-app-text">Stall Owner Registration</h2>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Full Name *
-              </label>
+              <label className={labelClass}>Full Name *</label>
               <input
                 type="text"
                 required
                 value={formData.fullName}
-                onChange={(e) => setFormData({...formData, fullName: e.target.value})}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
+                className={inputClass}
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Business Name (Optional)
-              </label>
+              <label className={labelClass}>Business Name (Optional)</label>
               <input
                 type="text"
                 value={formData.businessName}
-                onChange={(e) => setFormData({...formData, businessName: e.target.value})}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                onChange={(e) => setFormData({ ...formData, businessName: e.target.value })}
+                className={inputClass}
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Email Address *
-            </label>
+            <label className={labelClass}>Email Address *</label>
             <input
               type="email"
               required
               value={formData.email}
-              onChange={(e) => setFormData({...formData, email: e.target.value})}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              className={inputClass}
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Phone Number *
-            </label>
+            <label className={labelClass}>Phone Number *</label>
             <input
               type="tel"
               required
               value={formData.phoneNumber}
-              onChange={(e) => setFormData({...formData, phoneNumber: e.target.value})}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+              onChange={(e) => setFormData({ ...formData, phoneNumber: e.target.value })}
+              className={inputClass}
             />
           </div>
 
           {/* Payment Details Section */}
-          <div className="border-t pt-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Payment Details</h3>
-            
+          <div className="border-t border-muted/20 pt-6">
+            <h3 className="font-heading text-lg text-app-text mb-4">Payment Details</h3>
+
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Payment Mode *
-              </label>
+              <label className={labelClass}>Payment Mode *</label>
               <select
                 required
                 value={formData.paymentMode}
-                onChange={(e) => setFormData({...formData, paymentMode: e.target.value})}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                onChange={(e) => setFormData({ ...formData, paymentMode: e.target.value })}
+                className={inputClass}
               >
                 <option value="">Select payment mode</option>
                 <option value="MPESA">M-Pesa</option>
@@ -261,31 +255,27 @@ function StallOwnerRegistration({ onBack }: { onBack: () => void }) {
             {formData.paymentMode === 'MPESA' && (
               <>
                 <div className="mt-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    M-Pesa Phone Number *
-                  </label>
+                  <label className={labelClass}>M-Pesa Phone Number *</label>
                   <input
                     type="tel"
                     required
                     value={formData.mpesaNumber}
-                    onChange={(e) => setFormData({...formData, mpesaNumber: e.target.value})}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    onChange={(e) => setFormData({ ...formData, mpesaNumber: e.target.value })}
+                    className={inputClass}
                     placeholder="e.g., 254712345678"
                   />
                 </div>
 
                 <div className="mt-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    M-Pesa Till Number (Optional)
-                  </label>
+                  <label className={labelClass}>M-Pesa Till Number (Optional)</label>
                   <input
                     type="text"
                     value={formData.tillNumber}
-                    onChange={(e) => setFormData({...formData, tillNumber: e.target.value})}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    onChange={(e) => setFormData({ ...formData, tillNumber: e.target.value })}
+                    className={inputClass}
                     placeholder="e.g., 123456"
                   />
-                  <p className="text-sm text-gray-500 mt-1">
+                  <p className="text-sm text-muted mt-1">
                     If you have a business till number, enter it here. Otherwise, customers will pay to your phone number.
                   </p>
                 </div>
@@ -295,62 +285,58 @@ function StallOwnerRegistration({ onBack }: { onBack: () => void }) {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Password *
-              </label>
+              <label className={labelClass}>Password *</label>
               <input
                 type="password"
                 required
                 value={formData.password}
-                onChange={(e) => setFormData({...formData, password: e.target.value})}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                className={inputClass}
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Confirm Password *
-              </label>
+              <label className={labelClass}>Confirm Password *</label>
               <input
                 type="password"
                 required
                 value={formData.confirmPassword}
-                onChange={(e) => setFormData({...formData, confirmPassword: e.target.value})}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+                className={inputClass}
               />
             </div>
           </div>
 
           {/* T&C */}
           <div>
-            <label className="flex items-start space-x-2 cursor-pointer">
+            <label className="flex items-start gap-2 cursor-pointer">
               <input
                 type="checkbox"
                 checked={termsAccepted}
                 onChange={(e) => setTermsAccepted(e.target.checked)}
-                className="mt-0.5"
+                className="mt-0.5 accent-primary"
               />
-              <span className="text-sm text-gray-600">
+              <span className="text-sm text-app-text">
                 I agree to the{' '}
-                <button type="button" onClick={() => setShowTerms(true)} className="text-green-600 underline hover:text-green-700">
-                  Stall Owner Terms & Conditions
+                <button type="button" onClick={() => setShowTerms(true)} className="text-primary underline hover:text-primary/80">
+                  Stall Owner Terms &amp; Conditions
                 </button>
               </span>
             </label>
           </div>
 
-          <div className="flex space-x-4">
+          <div className="flex gap-4">
             <button
               type="button"
               onClick={onBack}
-              className="flex-1 px-6 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              className="flex-1 px-6 py-3 border border-muted/40 rounded-button text-app-text hover:bg-background transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={loading || !termsAccepted}
-              className="flex-1 bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 transition-colors font-medium disabled:opacity-50"
+              className="flex-1 bg-primary text-surface py-3 rounded-button hover:bg-primary/90 transition-colors font-semibold disabled:opacity-50"
             >
               {loading ? 'Creating Account...' : 'Create Account'}
             </button>
@@ -360,12 +346,12 @@ function StallOwnerRegistration({ onBack }: { onBack: () => void }) {
 
       {/* T&C Modal */}
       {showTerms && (
-        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-lg max-h-[80vh] overflow-y-auto">
-            <h3 className="text-lg font-semibold mb-4">Stall Owner Terms & Conditions</h3>
-            <pre className="text-sm text-gray-700 whitespace-pre-wrap font-sans">{STALL_OWNER_TERMS}</pre>
-            <button onClick={() => { setTermsAccepted(true); setShowTerms(false); }} className="mt-6 w-full bg-green-600 text-white py-2 rounded-lg hover:bg-green-700">I Accept</button>
-            <button onClick={() => setShowTerms(false)} className="mt-2 w-full border border-gray-300 py-2 rounded-lg hover:bg-gray-50">Close</button>
+        <div className="fixed inset-0 bg-app-text/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-surface rounded-card shadow-soft p-6 w-full max-w-lg max-h-[80vh] overflow-y-auto">
+            <h3 className="font-heading text-lg text-app-text mb-4">Stall Owner Terms &amp; Conditions</h3>
+            <pre className="text-sm text-app-text whitespace-pre-wrap font-body">{STALL_OWNER_TERMS}</pre>
+            <button onClick={() => { setTermsAccepted(true); setShowTerms(false); }} className="mt-6 w-full bg-primary text-surface py-2.5 rounded-button hover:bg-primary/90 font-semibold">I Accept</button>
+            <button onClick={() => setShowTerms(false)} className="mt-2 w-full border border-muted/40 py-2.5 rounded-button text-app-text hover:bg-background">Close</button>
           </div>
         </div>
       )}
@@ -419,128 +405,116 @@ function DeliveryPersonRegistration({ onBack }: { onBack: () => void }) {
 
   return (
     <div className="max-w-2xl mx-auto">
-      <div className="bg-white rounded-lg shadow-lg p-8">
+      <div className="bg-surface rounded-card shadow-soft border border-muted/20 p-8">
         <div className="flex items-center mb-6">
           <button
             onClick={onBack}
-            className="mr-4 p-2 hover:bg-gray-100 rounded-lg"
+            className="mr-4 px-3 py-2 hover:bg-background rounded-button text-app-text transition-colors"
           >
             ← Back
           </button>
-          <h2 className="text-2xl font-bold text-gray-900">Delivery Person Registration</h2>
+          <h2 className="font-heading text-2xl text-app-text">Delivery Person Registration</h2>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Full Name *
-            </label>
+            <label className={labelClass}>Full Name *</label>
             <input
               type="text"
               required
               value={formData.fullName}
-              onChange={(e) => setFormData({...formData, fullName: e.target.value})}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
+              className={inputClass}
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Email Address *
-            </label>
+            <label className={labelClass}>Email Address *</label>
             <input
               type="email"
               required
               value={formData.email}
-              onChange={(e) => setFormData({...formData, email: e.target.value})}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              className={inputClass}
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Phone Number *
-            </label>
+            <label className={labelClass}>Phone Number *</label>
             <input
               type="tel"
               required
               value={formData.phoneNumber}
-              onChange={(e) => setFormData({...formData, phoneNumber: e.target.value})}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              onChange={(e) => setFormData({ ...formData, phoneNumber: e.target.value })}
+              className={inputClass}
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              ID Number / Registration Number *
-            </label>
+            <label className={labelClass}>ID Number / Registration Number *</label>
             <input
               type="text"
               required
               value={formData.idNumber}
-              onChange={(e) => setFormData({...formData, idNumber: e.target.value})}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              onChange={(e) => setFormData({ ...formData, idNumber: e.target.value })}
+              className={inputClass}
             />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Password *
-              </label>
+              <label className={labelClass}>Password *</label>
               <input
                 type="password"
                 required
                 value={formData.password}
-                onChange={(e) => setFormData({...formData, password: e.target.value})}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                className={inputClass}
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Confirm Password *
-              </label>
+              <label className={labelClass}>Confirm Password *</label>
               <input
                 type="password"
                 required
                 value={formData.confirmPassword}
-                onChange={(e) => setFormData({...formData, confirmPassword: e.target.value})}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+                className={inputClass}
               />
             </div>
           </div>
 
           {/* T&C */}
           <div>
-            <label className="flex items-start space-x-2 cursor-pointer">
+            <label className="flex items-start gap-2 cursor-pointer">
               <input
                 type="checkbox"
                 checked={termsAccepted}
                 onChange={(e) => setTermsAccepted(e.target.checked)}
-                className="mt-0.5"
+                className="mt-0.5 accent-primary"
               />
-              <span className="text-sm text-gray-600">
+              <span className="text-sm text-app-text">
                 I agree to the{' '}
-                <button type="button" onClick={() => setShowTerms(true)} className="text-blue-600 underline hover:text-blue-700">
-                  Delivery Person Terms & Conditions
+                <button type="button" onClick={() => setShowTerms(true)} className="text-primary underline hover:text-primary/80">
+                  Delivery Person Terms &amp; Conditions
                 </button>
               </span>
             </label>
           </div>
 
-          <div className="flex space-x-4">
+          <div className="flex gap-4">
             <button
               type="button"
               onClick={onBack}
-              className="flex-1 px-6 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              className="flex-1 px-6 py-3 border border-muted/40 rounded-button text-app-text hover:bg-background transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={loading || !termsAccepted}
-              className="flex-1 bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50"
+              className="flex-1 bg-primary text-surface py-3 rounded-button hover:bg-primary/90 transition-colors font-semibold disabled:opacity-50"
             >
               {loading ? 'Creating Account...' : 'Create Account'}
             </button>
@@ -550,12 +524,12 @@ function DeliveryPersonRegistration({ onBack }: { onBack: () => void }) {
 
       {/* T&C Modal */}
       {showTerms && (
-        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-lg max-h-[80vh] overflow-y-auto">
-            <h3 className="text-lg font-semibold mb-4">Delivery Person Terms & Conditions</h3>
-            <pre className="text-sm text-gray-700 whitespace-pre-wrap font-sans">{DELIVERY_PERSON_TERMS}</pre>
-            <button onClick={() => { setTermsAccepted(true); setShowTerms(false); }} className="mt-6 w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700">I Accept</button>
-            <button onClick={() => setShowTerms(false)} className="mt-2 w-full border border-gray-300 py-2 rounded-lg hover:bg-gray-50">Close</button>
+        <div className="fixed inset-0 bg-app-text/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-surface rounded-card shadow-soft p-6 w-full max-w-lg max-h-[80vh] overflow-y-auto">
+            <h3 className="font-heading text-lg text-app-text mb-4">Delivery Person Terms &amp; Conditions</h3>
+            <pre className="text-sm text-app-text whitespace-pre-wrap font-body">{DELIVERY_PERSON_TERMS}</pre>
+            <button onClick={() => { setTermsAccepted(true); setShowTerms(false); }} className="mt-6 w-full bg-primary text-surface py-2.5 rounded-button hover:bg-primary/90 font-semibold">I Accept</button>
+            <button onClick={() => setShowTerms(false)} className="mt-2 w-full border border-muted/40 py-2.5 rounded-button text-app-text hover:bg-background">Close</button>
           </div>
         </div>
       )}

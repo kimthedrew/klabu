@@ -2,7 +2,42 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  body {
+    background-color: #F9F6F0;
+    color: #2D2823;
+    font-family: 'Outfit', sans-serif;
+    position: relative;
+  }
 
+  /* Noise texture overlay */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url('/noise.svg');
+    opacity: 0.03;
+    pointer-events: none;
+    z-index: 9999;
+  }
 
+  h1, h2, h3, h4 {
+    font-family: 'Fraunces', serif;
+  }
+}
 
-
+@layer utilities {
+  .sepia-warm {
+    position: relative;
+  }
+  .sepia-warm::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-color: #D96C4E;
+    opacity: 0.10;
+    mix-blend-mode: multiply;
+    pointer-events: none;
+    border-radius: inherit;
+  }
+}

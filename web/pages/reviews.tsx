@@ -151,8 +151,8 @@ export default function ReviewsPage() {
               size={20}
               className={`${
                 star <= rating
-                  ? 'text-yellow-400 fill-current'
-                  : 'text-gray-300'
+                  ? 'text-accent fill-current'
+                  : 'text-muted/40'
               }`}
             />
           </button>
@@ -178,8 +178,8 @@ export default function ReviewsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600"></div>
+      <div className="min-h-screen bg-background flex items-center justify-center font-body">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
       </div>
     );
   }
@@ -192,16 +192,16 @@ export default function ReviewsPage() {
         canonical="/reviews"
       />
 
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-background font-body">
         {/* Header */}
-        <header className="bg-white shadow-sm border-b">
+        <header className="bg-surface border-b border-muted/20">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex items-center py-4 gap-3">
-              <Link href="/" className="flex items-center text-gray-600 hover:text-gray-900 flex-shrink-0">
+              <Link href="/" className="flex items-center text-muted hover:text-app-text flex-shrink-0">
                 <ArrowLeft size={20} className="mr-1" />
                 <span className="hidden sm:inline">Back</span>
               </Link>
-              <h1 className="text-xl sm:text-2xl font-bold text-green-600">Reviews & Ratings</h1>
+              <h1 className="font-heading text-xl sm:text-2xl text-primary">Reviews &amp; Ratings</h1>
             </div>
           </div>
         </header>
@@ -210,27 +210,27 @@ export default function ReviewsPage() {
           {/* Search */}
           <div className="mb-6">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted" size={20} />
               <input
                 type="text"
                 placeholder="Search stalls, delivery persons, or reviews..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                className="w-full pl-10 pr-4 py-3 bg-surface border border-muted/40 rounded-button text-app-text placeholder-muted focus:outline-none focus:border-primary transition-colors"
               />
             </div>
           </div>
 
           {/* Tabs */}
           <div className="mb-8">
-            <div className="border-b border-gray-200 overflow-x-auto">
+            <div className="border-b border-muted/30 overflow-x-auto">
               <nav className="-mb-px flex min-w-max space-x-4 sm:space-x-8">
                 <button
                   onClick={() => setActiveTab('stalls')}
                   className={`py-2 px-1 border-b-2 font-medium text-sm whitespace-nowrap ${
                     activeTab === 'stalls'
-                      ? 'border-green-500 text-green-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      ? 'border-primary text-primary'
+                      : 'border-transparent text-muted hover:text-app-text hover:border-muted/40'
                   }`}
                 >
                   <Store size={16} className="inline mr-1" />
@@ -240,8 +240,8 @@ export default function ReviewsPage() {
                   onClick={() => setActiveTab('delivery-persons')}
                   className={`py-2 px-1 border-b-2 font-medium text-sm whitespace-nowrap ${
                     activeTab === 'delivery-persons'
-                      ? 'border-green-500 text-green-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      ? 'border-primary text-primary'
+                      : 'border-transparent text-muted hover:text-app-text hover:border-muted/40'
                   }`}
                 >
                   <Truck size={16} className="inline mr-1" />
@@ -251,8 +251,8 @@ export default function ReviewsPage() {
                   onClick={() => setActiveTab('all-reviews')}
                   className={`py-2 px-1 border-b-2 font-medium text-sm whitespace-nowrap ${
                     activeTab === 'all-reviews'
-                      ? 'border-green-500 text-green-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      ? 'border-primary text-primary'
+                      : 'border-transparent text-muted hover:text-app-text hover:border-muted/40'
                   }`}
                 >
                   <MessageSquare size={16} className="inline mr-1" />
@@ -266,13 +266,13 @@ export default function ReviewsPage() {
           {activeTab === 'stalls' && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredStalls.map((stall) => (
-                <div key={stall.id} className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <div key={stall.id} className="bg-surface rounded-card shadow-soft border border-muted/20 p-6">
                   <div className="flex items-start justify-between mb-4">
                     <div>
-                      <h3 className="text-lg font-semibold text-gray-900">{stall.name}</h3>
+                      <h3 className="font-heading text-lg text-app-text">{stall.name}</h3>
                       <div className="flex items-center mt-2">
                         {renderStars(stall.averageRating)}
-                        <span className="ml-2 text-sm text-gray-600">
+                        <span className="ml-2 text-sm text-muted">
                           {stall.averageRating.toFixed(1)} ({stall.totalReviews} reviews)
                         </span>
                       </div>
@@ -280,7 +280,7 @@ export default function ReviewsPage() {
                   </div>
                   <button
                     onClick={() => openReviewForm('stall', stall)}
-                    className="w-full bg-green-600 text-white py-2 px-4 rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center"
+                    className="w-full bg-primary text-surface py-2 px-4 rounded-button hover:bg-primary/90 transition-colors flex items-center justify-center font-medium"
                   >
                     <Plus size={16} className="mr-2" />
                     Write Review
@@ -293,13 +293,13 @@ export default function ReviewsPage() {
           {activeTab === 'delivery-persons' && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredDeliveryPersons.map((person) => (
-                <div key={person.id} className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <div key={person.id} className="bg-surface rounded-card shadow-soft border border-muted/20 p-6">
                   <div className="flex items-start justify-between mb-4">
                     <div>
-                      <h3 className="text-lg font-semibold text-gray-900">{person.fullName}</h3>
+                      <h3 className="font-heading text-lg text-app-text">{person.fullName}</h3>
                       <div className="flex items-center mt-2">
                         {renderStars(person.averageRating)}
-                        <span className="ml-2 text-sm text-gray-600">
+                        <span className="ml-2 text-sm text-muted">
                           {person.averageRating.toFixed(1)} ({person.totalReviews} reviews)
                         </span>
                       </div>
@@ -307,7 +307,7 @@ export default function ReviewsPage() {
                   </div>
                   <button
                     onClick={() => openReviewForm('delivery-person', person)}
-                    className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center"
+                    className="w-full bg-primary text-surface py-2 px-4 rounded-button hover:bg-primary/90 transition-colors flex items-center justify-center font-medium"
                   >
                     <Plus size={16} className="mr-2" />
                     Write Review
@@ -320,17 +320,17 @@ export default function ReviewsPage() {
           {activeTab === 'all-reviews' && (
             <div className="space-y-6">
               {filteredReviews.map((review) => (
-                <div key={review.id} className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <div key={review.id} className="bg-surface rounded-card shadow-soft border border-muted/20 p-6">
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex-1">
                       <div className="flex items-center mb-2">
                         {renderStars(review.rating)}
-                        <span className="ml-2 text-sm text-gray-600">
+                        <span className="ml-2 text-sm text-muted">
                           by {review.reviewerName || 'Anonymous'}
                         </span>
                       </div>
-                      <p className="text-gray-900 mb-2">{review.comment}</p>
-                      <div className="flex items-center text-sm text-gray-500">
+                      <p className="text-app-text mb-2">{review.comment}</p>
+                      <div className="flex items-center text-sm text-muted">
                         {review.stall && (
                           <span className="flex items-center mr-4">
                             <Store size={14} className="mr-1" />
@@ -354,57 +354,57 @@ export default function ReviewsPage() {
 
           {/* Review Form Modal */}
           {showReviewForm && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-              <div className="bg-white rounded-lg p-6 w-full max-w-md">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">
+            <div className="fixed inset-0 bg-app-text/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+              <div className="bg-surface rounded-card shadow-soft p-6 w-full max-w-md">
+                <h3 className="font-heading text-lg text-app-text mb-4">
                   Write a Review for {newReview.type === 'stall' ? selectedStall?.name : selectedDeliveryPerson?.fullName}
                 </h3>
                 <form onSubmit={handleSubmitReview} className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-app-text mb-2">
                       Your Name (Optional)
                     </label>
                     <input
                       type="text"
                       value={newReview.reviewerName}
                       onChange={(e) => setNewReview({...newReview, reviewerName: e.target.value})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                      className="w-full px-3 py-2 bg-background border border-muted/40 rounded-button text-app-text placeholder-muted focus:outline-none focus:border-primary transition-colors"
                       placeholder="Anonymous"
                     />
                   </div>
-                  
+
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-app-text mb-2">
                       Rating
                     </label>
                     {renderStars(newReview.rating, true, (rating) => setNewReview({...newReview, rating}))}
                   </div>
-                  
+
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-app-text mb-2">
                       Your Review *
                     </label>
                     <textarea
                       required
                       value={newReview.comment}
                       onChange={(e) => setNewReview({...newReview, comment: e.target.value})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                      className="w-full px-3 py-2 bg-background border border-muted/40 rounded-card text-app-text placeholder-muted focus:outline-none focus:border-primary transition-colors"
                       rows={4}
                       placeholder="Share your experience..."
                     />
                   </div>
-                  
-                  <div className="flex space-x-3">
+
+                  <div className="flex gap-3">
                     <button
                       type="button"
                       onClick={() => setShowReviewForm(false)}
-                      className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                      className="flex-1 px-4 py-2 border border-muted/40 rounded-button text-app-text hover:bg-background transition-colors"
                     >
                       Cancel
                     </button>
                     <button
                       type="submit"
-                      className="flex-1 bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 transition-colors"
+                      className="flex-1 bg-primary text-surface py-2 rounded-button hover:bg-primary/90 transition-colors font-medium"
                     >
                       Submit Review
                     </button>
