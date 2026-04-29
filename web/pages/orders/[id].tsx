@@ -104,7 +104,9 @@ export default function OrderTrackingPage() {
     if (!id) return;
     if (!silent) setLoading(true);
     try {
-      const res = await axios.get(`${API_BASE_URL}/orders/${id}`);
+      const customerToken = typeof window !== 'undefined' ? localStorage.getItem('customerToken') : null;
+      const headers = customerToken ? { Authorization: `Bearer ${customerToken}` } : undefined;
+      const res = await axios.get(`${API_BASE_URL}/orders/${id}`, { headers });
       setOrder(res.data.order);
       setError(null);
     } catch (err: any) {

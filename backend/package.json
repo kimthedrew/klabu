@@ -4,7 +4,8 @@
   "description": "Backend for Klabu food delivery platform",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc",
+    "build": "prisma generate && tsc",
+    "typecheck": "tsc --noEmit",
     "start": "prisma db push && node dist/index.js",
     "dev": "prisma db push && ts-node-dev --respawn --transpile-only src/index.ts",
     "db:generate": "prisma generate",

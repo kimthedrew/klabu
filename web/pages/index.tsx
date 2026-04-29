@@ -55,12 +55,25 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [category, setCategory] = useState('All');
   const [search, setSearch] = useState('');
+  const [customerName, setCustomerName] = useState<string | null>(null);
 
   useEffect(() => {
     axios.get(`${API_BASE_URL}/stalls`)
       .then(res => setStalls(res.data.stalls))
       .catch(() => toast.error('Failed to load stalls'))
       .finally(() => setLoading(false));
+
+    if (typeof window !== 'undefined') {
+      const user = localStorage.getItem('customerUser');
+      if (user) {
+        try {
+          const parsed = JSON.parse(user);
+          if (parsed.role === 'CUSTOMER') {
+            setCustomerName(parsed.profile?.fullName ?? null);
+          }
+        } catch {}
+      }
+    }
   }, []);
 
   const visible = stalls.filter(s => {
@@ -71,6 +84,30 @@ export default function Home() {
       s.stall.menuItems.some(i => i.name.toLowerCase().includes(search.toLowerCase()));
     return matchesCat && matchesSearch;
   });
+
+  const rightElement = customerName ? (
+    <Link
+      href="/customer/orders"
+      className="flex items-center gap-1.5 bg-surface/15 hover:bg-surface/25 text-surface font-body text-sm font-medium px-3 py-1.5 rounded-pill transition-colors"
+    >
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+        <circle cx="7" cy="5" r="2.5" stroke="currentColor" strokeWidth="1.3"/>
+        <path d="M2 12c0-2.2 2.2-4 5-4s5 1.8 5 4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+      </svg>
+      <span className="max-w-[120px] truncate">{customerName.split(' ')[0]}</span>
+    </Link>
+  ) : (
+    <Link
+      href="/customer/login"
+      className="flex items-center gap-1.5 bg-surface/15 hover:bg-surface/25 text-surface font-body text-sm font-medium px-3 py-1.5 rounded-pill transition-colors"
+    >
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+        <circle cx="7" cy="5" r="2.5" stroke="currentColor" strokeWidth="1.3"/>
+        <path d="M2 12c0-2.2 2.2-4 5-4s5 1.8 5 4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+      </svg>
+      Sign in
+    </Link>
+  );
 
   return (
     <>
@@ -83,18 +120,7 @@ export default function Home() {
       <div className="min-h-screen bg-background font-body">
         <WavyHeader
           greeting="What are you hungry for?"
-          rightElement={
-            <Link
-              href="/login"
-              className="flex items-center gap-1.5 bg-surface/15 hover:bg-surface/25 text-surface font-body text-sm font-medium px-3 py-1.5 rounded-pill transition-colors"
-            >
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                <circle cx="7" cy="5" r="2.5" stroke="currentColor" strokeWidth="1.3"/>
-                <path d="M2 12c0-2.2 2.2-4 5-4s5 1.8 5 4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
-              </svg>
-              Login
-            </Link>
-          }
+          rightElement={rightElement}
         />
 
         {/* Search bar */}

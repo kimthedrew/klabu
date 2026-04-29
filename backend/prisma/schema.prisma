@@ -26,11 +26,28 @@ model User {
   // Relations
   stallOwner            StallOwner?
   deliveryPerson        DeliveryPerson?
+  customer              Customer?
   notifications         Notification[]
   passwordResetRequests PasswordResetRequest[]
   termsAcceptances      TermsAcceptance[]
 
   @@map("users")
+}
+
+model Customer {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  fullName    String
+  phoneNumber String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  orders      Order[]
+
+  @@map("customers")
 }
 
 model StallOwner {
@@ -131,7 +148,11 @@ model Order {
   id        String      @id @default(cuid())
   stallId   String
   stall     Stall       @relation(fields: [stallId], references: [id])
-  
+
+  // Optional link to a registered customer account
+  customerId  String?
+  customer    Customer? @relation(fields: [customerId], references: [id])
+
   // Customer details (no login required)
   customerName    String
   customerPhone   String
@@ -352,7 +373,7 @@ model TermsAcceptance {
 
 // Note: Using String types for status/role fields (no enums) for simplicity
 // Valid values:
-// UserRole: "STALL_OWNER", "DELIVERY_PERSON", "ADMIN"
+// UserRole: "STALL_OWNER", "DELIVERY_PERSON", "ADMIN", "CUSTOMER"
 // OrderStatus: "PENDING", "CONFIRMED", "PREPARING", "READY_FOR_DELIVERY", "OUT_FOR_DELIVERY", "DELIVERED", "CANCELLED"
 // PaymentStatus: "PENDING", "CONFIRMED", "FAILED"
 // DeliveryStatus: "PENDING", "ASSIGNED", "ACCEPTED", "PICKED_UP", "DELIVERED", "CANCELLED"

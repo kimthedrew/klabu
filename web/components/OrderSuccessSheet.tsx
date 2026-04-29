@@ -7,10 +7,11 @@ interface Props {
   trackingToken?: string;
   total: number;
   paymentMethod: 'STK_PUSH' | 'MANUAL' | string;
+  showSignupCta?: boolean;
   onClose: () => void;
 }
 
-export default function OrderSuccessSheet({ open, orderId, trackingToken, total, paymentMethod, onClose }: Props) {
+export default function OrderSuccessSheet({ open, orderId, trackingToken, total, paymentMethod, showSignupCta, onClose }: Props) {
   if (!open) return null;
 
   const trackHref = trackingToken
@@ -49,6 +50,30 @@ export default function OrderSuccessSheet({ open, orderId, trackingToken, total,
         >
           Track your order
         </Link>
+
+        {showSignupCta && (
+          <div className="bg-background rounded-card p-4 mb-3">
+            <p className="text-sm text-app-text mb-3">
+              <span className="font-medium">Save your orders.</span>{' '}
+              <span className="text-muted">Create a free account to see live updates and access order history anytime.</span>
+            </p>
+            <div className="flex gap-2">
+              <Link
+                href={`/customer/register?redirect=/orders/${orderId}`}
+                className="flex-1 bg-primary/10 text-primary text-sm font-medium py-2 rounded-button text-center hover:bg-primary/20 transition-colors"
+              >
+                Create account
+              </Link>
+              <Link
+                href={`/customer/login?redirect=/orders/${orderId}`}
+                className="flex-1 border border-muted/40 text-app-text text-sm font-medium py-2 rounded-button text-center hover:bg-surface transition-colors"
+              >
+                Sign in
+              </Link>
+            </div>
+          </div>
+        )}
+
         <button
           onClick={onClose}
           className="block w-full text-muted text-sm py-2 hover:text-app-text transition-colors"

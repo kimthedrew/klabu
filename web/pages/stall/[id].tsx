@@ -67,7 +67,7 @@ export default function StallPage({ stall, stkPushEnabled, fastDeliveryFee, slow
   const [buyerTermsAccepted, setBuyerTermsAccepted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [stkOverlay, setStkOverlay] = useState<{ open: boolean; orderId: string; phone: string }>({ open: false, orderId: '', phone: '' });
-  const [successSheet, setSuccessSheet] = useState<{ open: boolean; orderId: string; total: number; paymentMethod: string }>({ open: false, orderId: '', total: 0, paymentMethod: 'MANUAL' });
+  const [successSheet, setSuccessSheet] = useState<{ open: boolean; orderId: string; total: number; paymentMethod: string; isGuest: boolean }>({ open: false, orderId: '', total: 0, paymentMethod: 'MANUAL', isGuest: true });
   const [orderForm, setOrderForm] = useState({
     customerName: '',
     customerPhone: '',
@@ -76,6 +76,30 @@ export default function StallPage({ stall, stkPushEnabled, fastDeliveryFee, slow
     mpesaPayerName: '',
     paymentMethod: 'MANUAL',
   });
+  const [loggedInCustomer, setLoggedInCustomer] = useState<{ id: string; fullName: string; phoneNumber?: string } | null>(null);
+
+  // Pre-fill order form from logged-in customer profile
+  useEffect(() => {
+    const token = localStorage.getItem('customerToken');
+    const user = localStorage.getItem('customerUser');
+    if (token && user) {
+      try {
+        const parsed = JSON.parse(user);
+        if (parsed.role === 'CUSTOMER' && parsed.profile) {
+          setLoggedInCustomer({
+            id: parsed.profile.id,
+            fullName: parsed.profile.fullName,
+            phoneNumber: parsed.profile.phoneNumber ?? undefined,
+          });
+          setOrderForm(prev => ({
+            ...prev,
+            customerName: parsed.profile.fullName ?? prev.customerName,
+            customerPhone: parsed.profile.phoneNumber ?? prev.customerPhone,
+          }));
+        }
+      } catch {}
+    }
+  }, []);
 
   // Parallax on cover image
   useEffect(() => {
@@ -116,18 +140,22 @@ export default function StallPage({ stall, stkPushEnabled, fastDeliveryFee, slow
     if (cart.length === 0) { toast.error('Your cart is empty'); return; }
     setSubmitting(true);
     try {
-      const res = await axios.post(`${API_BASE_URL}/orders`, {
+      const orderPayload: Record<string, unknown> = {
         stallId: stall.id,
         ...orderForm,
         deliveryTier,
         items: cart.map(c => ({ menuItemId: c.menuItem.id, quantity: c.quantity })),
-      });
+      };
+      if (loggedInCustomer) orderPayload.customerId = loggedInCustomer.id;
 
+      const customerToken = loggedInCustomer ? localStorage.getItem('customerToken') : null;
+      const headers = customerToken ? { Authorization: `Bearer ${customerToken}` } : undefined;
+
+      const res = await axios.post(`${API_BASE_URL}/orders`, orderPayload, { headers });
       const placedOrder = res.data.order;
       const placedTotal = placedOrder.totalAmount + placedOrder.deliveryFee;
 
-      // Save guest tracking handles so home can offer "Track your last order"
-      // and /orders can list recent ones.
+      // Save guest tracking handles so home / "/orders" can offer recall.
       try {
         localStorage.setItem('lastOrderId', placedOrder.id);
         const raw = localStorage.getItem('myOrders');
@@ -142,10 +170,24 @@ export default function StallPage({ stall, stkPushEnabled, fastDeliveryFee, slow
       if (orderForm.paymentMethod === 'STK_PUSH') {
         setStkOverlay({ open: true, orderId: placedOrder.id, phone: orderForm.customerPhone });
       } else {
-        setSuccessSheet({ open: true, orderId: placedOrder.id, total: placedTotal, paymentMethod: orderForm.paymentMethod });
+        setSuccessSheet({
+          open: true,
+          orderId: placedOrder.id,
+          total: placedTotal,
+          paymentMethod: orderForm.paymentMethod,
+          isGuest: !loggedInCustomer,
+        });
       }
 
-      setOrderForm({ customerName: '', customerPhone: '', deliveryLocation: '', roomNumber: '', mpesaPayerName: '', paymentMethod: 'MANUAL' });
+      // Reset form, but keep prefill for logged-in customers.
+      setOrderForm({
+        customerName: loggedInCustomer?.fullName ?? '',
+        customerPhone: loggedInCustomer?.phoneNumber ?? '',
+        deliveryLocation: '',
+        roomNumber: '',
+        mpesaPayerName: '',
+        paymentMethod: 'MANUAL',
+      });
     } catch (err: any) {
       toast.error(err.response?.data?.error || 'Failed to place order');
     } finally {
@@ -317,6 +359,18 @@ export default function StallPage({ stall, stkPushEnabled, fastDeliveryFee, slow
             <div className="px-5 pb-10">
               <h2 className="font-heading text-app-text text-2xl mb-4">Your Order</h2>
 
+              {/* Logged-in customer banner */}
+              {loggedInCustomer && (
+                <div className="mb-4 flex items-center justify-between bg-primary/10 rounded-pill px-4 py-2 text-sm">
+                  <span className="text-primary font-medium truncate">
+                    Signed in as {loggedInCustomer.fullName}
+                  </span>
+                  <Link href="/customer/orders" className="text-primary hover:text-primary/80 font-medium ml-2 flex-shrink-0 text-xs">
+                    My orders
+                  </Link>
+                </div>
+              )}
+
               {/* Cart items */}
               <div className="bg-background rounded-card p-4 mb-4">
                 {cart.map(c => (
@@ -340,6 +394,7 @@ export default function StallPage({ stall, stkPushEnabled, fastDeliveryFee, slow
                   {(['FAST', 'SLOW'] as const).map(tier => (
                     <button
                       key={tier}
+                      type="button"
                       onClick={() => setDeliveryTier(tier)}
                       className={`flex-1 py-3 px-4 rounded-card border-2 text-left transition-colors ${deliveryTier === tier ? 'border-primary bg-primary/5' : 'border-muted/30 bg-surface'}`}
                     >
@@ -469,7 +524,8 @@ export default function StallPage({ stall, stkPushEnabled, fastDeliveryFee, slow
         orderId={successSheet.orderId}
         total={successSheet.total}
         paymentMethod={successSheet.paymentMethod}
-        onClose={() => setSuccessSheet({ open: false, orderId: '', total: 0, paymentMethod: 'MANUAL' })}
+        showSignupCta={successSheet.isGuest}
+        onClose={() => setSuccessSheet({ open: false, orderId: '', total: 0, paymentMethod: 'MANUAL', isGuest: true })}
       />
     </>
   );
