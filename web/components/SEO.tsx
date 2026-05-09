@@ -3,9 +3,9 @@ import Head from 'next/head';
 const SITE_NAME = 'Klabu';
 const BASE_URL = 'https://klabu.site';
 const DEFAULT_DESCRIPTION =
-  'Klabu — UON food delivery. Order food from stalls at the University of Nairobi and get it delivered straight to your hostel room.';
+  'Klabu — UoN food delivery. Order food from stalls at the University of Nairobi and get it delivered to your hostel, office, classroom, or anywhere around campus.';
 const KEYWORDS =
-  'klabu, klabu uon, uon food, uon food delivery, university of nairobi food, university of nairobi food delivery, klabu food delivery, uon hostel food delivery, order food uon, klabu stalls, food delivery university of nairobi, nairobi university hostel food, klabu nairobi, uon campus food, university of nairobi hostel delivery';
+  'klabu, klabu uon, uon food, uon food delivery, university of nairobi food, university of nairobi food delivery, klabu food delivery, uon hostel food delivery, uon office food delivery, uon class food delivery, order food uon, klabu stalls, food delivery university of nairobi, nairobi university campus food, klabu nairobi, uon campus food, university of nairobi food delivery';
 
 interface SEOProps {
   title?: string;
@@ -28,7 +28,7 @@ export default function SEO({
 }: SEOProps) {
   const fullTitle = title
     ? `${title} | ${SITE_NAME}`
-    : `${SITE_NAME} — Food Delivery at UON`;
+    : `${SITE_NAME} — Food Delivery at UoN`;
   const metaDescription = description || DEFAULT_DESCRIPTION;
   const canonicalUrl = `${BASE_URL}${canonical}`;
   const ogImageUrl = ogImage ||

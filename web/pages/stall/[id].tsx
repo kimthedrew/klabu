@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import SEO from '../../components/SEO';
@@ -417,8 +417,8 @@ export default function StallPage({ stall, stkPushEnabled, fastDeliveryFee, slow
                 {[
                   { label: 'Your Name', key: 'customerName', placeholder: 'Full name', type: 'text', required: true },
                   { label: 'Phone Number', key: 'customerPhone', placeholder: '07XX XXX XXX', type: 'tel', required: true },
-                  { label: 'Delivery Location', key: 'deliveryLocation', placeholder: 'e.g. Chiromo, Hall 9', type: 'text', required: true },
-                  { label: 'Room Number', key: 'roomNumber', placeholder: 'Optional', type: 'text', required: false },
+                  { label: 'Delivery Location', key: 'deliveryLocation', placeholder: 'e.g. Hall 9, Chiromo Library, ADD office', type: 'text', required: true },
+                  { label: 'Room / office / floor', key: 'roomNumber', placeholder: 'Optional — e.g. Room 12, 3rd floor', type: 'text', required: false },
                 ].map(f => (
                   <div key={f.key}>
                     <label className="font-body text-xs text-muted block mb-1">{f.label}{f.required && ' *'}</label>

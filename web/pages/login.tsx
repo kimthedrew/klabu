@@ -25,6 +25,16 @@ export default function Login() {
 
     try {
       const response = await axios.post(`${API_BASE_URL}/auth/login`, formData);
+      const role = response.data.user.role;
+
+      // Customer accounts belong on /customer/login — reject here so they don't
+      // get bounced into a redirect loop (this page sets `token`/`user`, but
+      // /customer/orders looks for `customerToken`/`customerUser`).
+      if (role === 'CUSTOMER' || role === 'STUDENT') {
+        toast.error('That looks like a customer account. Use the customer sign-in page.');
+        router.push('/customer/login');
+        return;
+      }
 
       localStorage.setItem('token', response.data.token);
       localStorage.setItem('user', JSON.stringify(response.data.user));
@@ -32,18 +42,16 @@ export default function Login() {
 
       // Redirect to T&C acceptance if not yet accepted (version bump)
       if (response.data.termsAccepted === false && response.data.termsVersion) {
-        router.push(`/terms-accept?role=${response.data.user.role}&version=${response.data.termsVersion}`);
+        router.push(`/terms-accept?role=${role}&version=${response.data.termsVersion}`);
         return;
       }
 
-      if (response.data.user.role === 'STALL_OWNER') {
+      if (role === 'STALL_OWNER') {
         router.push('/dashboard/stall');
-      } else if (response.data.user.role === 'DELIVERY_PERSON') {
+      } else if (role === 'DELIVERY_PERSON') {
         router.push('/dashboard/delivery');
-      } else if (response.data.user.role === 'ADMIN') {
+      } else if (role === 'ADMIN') {
         router.push('/dashboard/admin');
-      } else if (response.data.user.role === 'STUDENT' || response.data.user.role === 'CUSTOMER') {
-        router.push('/orders');
       } else {
         router.push('/');
       }

@@ -8,12 +8,17 @@ import { sendPasswordResetEmail } from '../utils/email';
 import { createNotification, notifyAdmins } from '../utils/notify';
 import { TERMS_VERSIONS, TermsRole } from '../utils/terms';
 
+// Rate limiters are skipped outside production so local dev doesn't
+// lock you out after 10 retries.
+const skipInDev = () => process.env.NODE_ENV !== 'production';
+
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 10,
   message: { error: 'Too many login attempts. Please try again in 15 minutes.' },
   standardHeaders: true,
   legacyHeaders: false,
+  skip: skipInDev,
 });
 
 const registerLimiter = rateLimit({
@@ -22,6 +27,7 @@ const registerLimiter = rateLimit({
   message: { error: 'Too many registration attempts. Please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
+  skip: skipInDev,
 });
 
 const forgotPasswordLimiter = rateLimit({
@@ -30,6 +36,7 @@ const forgotPasswordLimiter = rateLimit({
   message: { error: 'Too many password reset requests. Please try again in an hour.' },
   standardHeaders: true,
   legacyHeaders: false,
+  skip: skipInDev,
 });
 
 const router = express.Router();

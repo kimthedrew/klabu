@@ -46,7 +46,7 @@ const jsonLd = [
     '@type': 'WebSite',
     name: 'Klabu',
     url: 'https://klabu.site',
-    description: 'UON food delivery platform — order from campus stalls and get food delivered to your hostel.',
+    description: 'UoN food delivery platform — order from campus stalls and get food delivered to your hostel, office, classroom, or anywhere around campus.',
   },
 ];
 
@@ -97,23 +97,31 @@ export default function Home() {
       <span className="max-w-[120px] truncate">{customerName.split(' ')[0]}</span>
     </Link>
   ) : (
-    <Link
-      href="/customer/login"
-      className="flex items-center gap-1.5 bg-surface/15 hover:bg-surface/25 text-surface font-body text-sm font-medium px-3 py-1.5 rounded-pill transition-colors"
-    >
-      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-        <circle cx="7" cy="5" r="2.5" stroke="currentColor" strokeWidth="1.3"/>
-        <path d="M2 12c0-2.2 2.2-4 5-4s5 1.8 5 4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
-      </svg>
-      Sign in
-    </Link>
+    <div className="flex items-center gap-2">
+      <Link
+        href="/app"
+        className="hidden sm:inline text-surface/70 hover:text-surface font-body text-xs transition-colors"
+      >
+        For stalls &amp; runners ↗
+      </Link>
+      <Link
+        href="/customer/login"
+        className="flex items-center gap-1.5 bg-surface/15 hover:bg-surface/25 text-surface font-body text-sm font-medium px-3 py-1.5 rounded-pill transition-colors"
+      >
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <circle cx="7" cy="5" r="2.5" stroke="currentColor" strokeWidth="1.3"/>
+          <path d="M2 12c0-2.2 2.2-4 5-4s5 1.8 5 4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+        </svg>
+        Sign in
+      </Link>
+    </div>
   );
 
   return (
     <>
       <SEO
         canonical="/"
-        description="Order food from campus stalls at the University of Nairobi and get it delivered to your hostel."
+        description="Order food from campus stalls at the University of Nairobi. Delivered to your hostel, office, classroom, or anywhere around campus."
         jsonLd={jsonLd}
       />
 
@@ -160,7 +168,7 @@ export default function Home() {
         </div>
 
         {/* Stall list */}
-        <div className="px-4 pb-24 flex flex-col gap-4">
+        <div className="px-4 pb-6 flex flex-col gap-4">
           {loading ? (
             <>
               <StallCardSkeleton />
@@ -189,6 +197,54 @@ export default function Home() {
             ))
           )}
         </div>
+
+        {/* Customer + staff entry cards — guests only */}
+        {!customerName && (
+          <div className="px-4 pb-12 flex flex-col gap-3">
+            {/* Customer registration */}
+            <div className="bg-surface rounded-card shadow-soft border border-muted/20 p-5">
+              <h3 className="font-heading text-app-text text-base mb-1">Save your orders</h3>
+              <p className="font-body text-muted text-sm mb-4">
+                Create a free Klabu account to track your orders, see your history, and skip retyping your details every time.
+                You can keep ordering as a guest if you'd rather not.
+              </p>
+              <div className="flex gap-2">
+                <Link
+                  href="/customer/register"
+                  className="flex-1 bg-primary text-surface text-sm font-medium py-2.5 rounded-button text-center hover:bg-primary/90 transition-colors"
+                >
+                  Create account
+                </Link>
+                <Link
+                  href="/customer/login"
+                  className="flex-1 border border-muted/40 text-app-text text-sm font-medium py-2.5 rounded-button text-center hover:bg-background transition-colors"
+                >
+                  Sign in
+                </Link>
+              </div>
+            </div>
+
+            {/* Staff registration */}
+            <div className="bg-surface rounded-card shadow-soft border border-muted/20 p-5">
+              <h3 className="font-heading text-app-text text-base mb-1">Run a stall or deliver for Klabu?</h3>
+              <p className="font-body text-muted text-sm mb-4">Register your stall or join the runner network — or sign in if you already have a staff account.</p>
+              <div className="flex gap-2">
+                <Link
+                  href="/app"
+                  className="flex-1 bg-primary text-surface text-sm font-medium py-2.5 rounded-button text-center hover:bg-primary/90 transition-colors"
+                >
+                  Get started
+                </Link>
+                <Link
+                  href="/login"
+                  className="flex-1 border border-muted/40 text-app-text text-sm font-medium py-2.5 rounded-button text-center hover:bg-background transition-colors"
+                >
+                  Staff login
+                </Link>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </>
   );

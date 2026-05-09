@@ -17,7 +17,7 @@ export default function App() {
     <>
       <SEO
         title="For Stall Owners & Delivery Persons"
-        description="Register your food stall at UON on Klabu, or sign up as a delivery person. Join the University of Nairobi's campus food delivery platform."
+        description="Register your food stall at UoN on Klabu, or sign up as a delivery person. Join the University of Nairobi's campus food delivery platform serving hostels, offices, and classrooms."
         canonical="/app"
       />
 
@@ -53,8 +53,8 @@ export default function App() {
                     </div>
                     <h3 className="font-heading text-2xl text-app-text mb-4">Stall Owner</h3>
                     <p className="text-muted mb-6">
-                      Register your food stall and start receiving orders from students.
-                      Manage your menu, track orders, and grow your business.
+                      Register your food stall and start receiving orders from customers around campus —
+                      students, staff, and visitors. Manage your menu, track orders, and grow your business.
                     </p>
                     <ul className="text-left text-sm text-muted mb-8 space-y-2">
                       <li>• Create and manage your stall profile</li>
@@ -79,8 +79,8 @@ export default function App() {
                     </div>
                     <h3 className="font-heading text-2xl text-app-text mb-4">Delivery Person</h3>
                     <p className="text-muted mb-6">
-                      Earn money by delivering food to students. Work flexible hours
-                      and be part of the Klabu delivery network.
+                      Earn money by delivering food around UoN — to hostels, offices, and classrooms.
+                      Work flexible hours and be part of the Klabu delivery network.
                     </p>
                     <ul className="text-left text-sm text-muted mb-8 space-y-2">
                       <li>• Flexible working hours</li>

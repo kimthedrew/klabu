@@ -188,7 +188,7 @@ export default function ReviewsPage() {
     <>
       <SEO
         title="Reviews"
-        description="Read and write reviews for Klabu food stalls and delivery persons at the University of Nairobi. See ratings from UON students."
+        description="Read and write reviews for Klabu food stalls and delivery persons at the University of Nairobi. See ratings from customers around campus."
         canonical="/reviews"
       />
 

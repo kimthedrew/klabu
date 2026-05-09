@@ -5,9 +5,9 @@ export const config = { runtime: 'edge' };
 
 export default function handler(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const title = searchParams.get('title') || 'Klabu — UON Food Delivery';
+  const title = searchParams.get('title') || 'Klabu — UoN Food Delivery';
   const description = searchParams.get('description') ||
-    'A famous, budget-friendly food haven located near the University of Nairobi (UoN) main campus. Order affordable meals and get them delivered to your hostel.';
+    'A budget-friendly food haven near the University of Nairobi (UoN) main campus. Order affordable meals and have them delivered to your hostel, office, classroom, or anywhere around campus.';
 
   return new ImageResponse(
     (
@@ -38,7 +38,7 @@ export default function handler(req: NextRequest) {
             Klabu
           </div>
           <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: 20, marginLeft: 16 }}>
-            UON Food Delivery
+            UoN Food Delivery
           </div>
         </div>
 
